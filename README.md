@@ -29,7 +29,6 @@ Before running this application, ensure you have:
 1. **Node.js** (v16 or higher)
 2. **npm** or **yarn**
 3. **FastAPI Backend** running on `http://0.0.0.0:8000`
-   - Backend should be from `/Users/ayushtiwari/retail-plan-visualizer-backend`
    - Connected to BigQuery with forecast data
 
 ## 🚦 Getting Started
@@ -53,8 +52,7 @@ The application will be available at `http://localhost:5173`
 Make sure your FastAPI backend is running:
 
 ```bash
-# In your backend directory
-cd /Users/ayushtiwari/retail-plan-visualizer-backend
+
 python run.py
 ```
 
