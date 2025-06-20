@@ -1,0 +1,254 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Security Best Practices Rules
+
+:::danger[Security Critical]
+Security is paramount - never compromise on security for convenience
+:::
+
+## 1. Input Sanitization
+
+:::code-group
+```jsx [Input Sanitization]
+// ✅ Sanitize user inputs before rendering
+import DOMPurify from 'dompurify';
+
+const SafeHTML = ({ htmlContent }) => {
+  const sanitizedHTML = DOMPurify.sanitize(htmlContent);
+  return <div dangerouslySetInnerHTML={{ __html: sanitizedHTML }} />;
+};
+
+// ✅ Use GENDS components that handle sanitization
+import { Input, Text } from 'gends';
+<Input value={userInput} onChange={handleInput} />
+```
+:::
+
+## 2. XSS Prevention
+
+:::danger[XSS Rules]
+- NEVER use `dangerouslySetInnerHTML` without sanitization
+- Always validate and sanitize user inputs
+- Use GENDS components which handle security by default
+- Escape special characters in dynamic content
+:::
+
+:::code-group
+```jsx [XSS Prevention]
+// ❌ DANGEROUS: Direct HTML injection
+<div dangerouslySetInnerHTML={{ __html: userContent }} />
+
+// ✅ SAFE: Sanitized content
+const sanitizedContent = DOMPurify.sanitize(userContent);
+<div dangerouslySetInnerHTML={{ __html: sanitizedContent }} />
+
+// ✅ BEST: Use GENDS Text component
+<Text>{userContent}</Text>
+```
+:::
+
+## 3. API Security
+
+:::warning[API Security Rules]
+- Always validate API responses
+- Use proper error handling without exposing sensitive data
+- Implement request/response interceptors for security headers
+- Use HTTPS for all API communications
+:::
+
+:::code-group
+```jsx [Secure API Calls]
+// ✅ Secure API calls with error handling
+const fetchData = async (id) => {
+  try {
+    const response = await api.get(`/data/${encodeURIComponent(id)}`);
+    return response.data;
+  } catch (error) {
+    // Don't expose internal error details
+    console.error('API Error:', error);
+    throw new Error('Failed to fetch data');
+  }
+};
+```
+:::
+
+## 4. Authentication & Authorization
+
+:::info[Auth Strategy]
+- Store tokens securely (httpOnly cookies preferred)
+- Implement proper session management
+- Validate user permissions on every protected action
+- Use secure token refresh mechanisms
+:::
+
+:::code-group
+```jsx [Protected Routes]
+// ✅ Protected route implementation
+const ProtectedRoute = ({ component: Component, requiredPermission, ...rest }) => {
+  const { user, hasPermission } = useAuth();
+  
+  if (!user || !hasPermission(requiredPermission)) {
+    return <Navigate to="/unauthorized" />;
+  }
+  
+  return <Component {...rest} />;
+};
+```
+:::
+
+## 5. File Upload Security
+
+:::warning[File Upload Rules]
+- Validate file types and sizes
+- Sanitize file names
+- Use GENDS FileUpload component with proper validation
+- Scan uploaded files for malware when possible
+:::
+
+:::code-group
+```jsx [Secure File Upload]
+// ✅ Secure file upload with GENDS
+import { FileUpload } from 'gends';
+
+const SecureFileUpload = () => {
+  const handleFileUpload = (files) => {
+    const allowedTypes = ['image/jpeg', 'image/png', 'application/pdf'];
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    
+    const validFiles = files.filter(file => {
+      return allowedTypes.includes(file.type) && file.size <= maxSize;
+    });
+    
+    // Process valid files
+  };
+  
+  return <FileUpload onUpload={handleFileUpload} />;
+};
+```
+:::
+
+## 6. URL and Route Security
+
+:::tip[Route Security]
+- Validate route parameters
+- Prevent unauthorized access to routes
+- Use proper URL encoding for parameters
+- Implement route guards
+:::
+
+:::code-group
+```jsx [Secure Route Parameters]
+// ✅ Secure route parameter handling
+const ItemDetail = () => {
+  const { id } = useParams();
+  
+  // Validate ID format
+  if (!/^\d+$/.test(id)) {
+    return <Navigate to="/not-found" />;
+  }
+  
+  const itemId = parseInt(id, 10);
+  // Use validated ID
+};
+```
+:::
+
+## 7. State Management Security
+
+:::warning[State Security]
+- Don't store sensitive data in Redux/global state
+- Clear sensitive data on logout
+- Use proper state serialization
+- Implement state encryption for sensitive data
+:::
+
+:::code-group
+```jsx [Secure Logout]
+// ✅ Secure logout implementation
+const logout = () => {
+  // Clear all sensitive data
+  dispatch(clearUserData());
+  dispatch(clearSensitiveState());
+  
+  // Clear local storage
+  localStorage.removeItem('userPreferences');
+  
+  // Redirect to login
+  navigate('/login');
+};
+```
+:::
+
+## 8. Content Security Policy (CSP)
+
+:::info[CSP Guidelines]
+- Implement proper CSP headers
+- Avoid inline scripts and styles
+- Use nonce or hash for required inline content
+- Regularly audit and update CSP policies
+:::
+
+## 9. Dependency Security
+
+:::warning[Dependency Management]
+- Regularly audit dependencies with `npm audit`
+- Keep dependencies updated
+- Use tools like Snyk for vulnerability scanning
+- Review third-party package permissions
+:::
+
+## 10. Error Handling Security
+
+:::danger[Error Handling Rules]
+- Don't expose internal system details in error messages
+- Log security events properly
+- Implement proper error boundaries
+- Use GENDS notification system for user-friendly errors
+:::
+
+:::code-group
+```jsx [Secure Error Handling]
+// ✅ Secure error handling
+const ErrorBoundary = ({ children }) => {
+  const [hasError, setHasError] = useState(false);
+  
+  useEffect(() => {
+    const errorHandler = (error) => {
+      console.error('Security Error:', error);
+      // Log to monitoring service
+      setHasError(true);
+    };
+    
+    window.addEventListener('error', errorHandler);
+    return () => window.removeEventListener('error', errorHandler);
+  }, []);
+  
+  if (hasError) {
+    return <Text>Something went wrong. Please try again.</Text>;
+  }
+  
+  return children;
+};
+```
+:::
+
+## 11. Development Security
+
+:::info[Development Guidelines]
+- Never commit secrets or API keys
+- Use environment variables for configuration
+- Implement proper development/production configurations
+- Use secure defaults for all configurations
+:::
+
+## 12. GENDS Security Features
+
+:::tip[Trust GENDS]
+- Trust GENDS components for built-in security
+- Use GENDS form validation features
+- Leverage GENDS authentication components
+- Follow GENDS security guidelines and documentation
+:::

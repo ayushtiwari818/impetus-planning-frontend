@@ -1,0 +1,1000 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Advanced State Management Patterns
+
+## State Management Philosophy
+
+### 1. State Ownership Principles
+Follow these guidelines for determining where state should live:
+
+**Server State → React Query (TanStack Query)**
+- API data, caching, background updates
+- Remote procedure calls
+- Server-side validation
+- Real-time data synchronization
+
+**Client State → Redux Toolkit**
+- Global application state
+- User authentication
+- UI preferences and settings
+- Cross-component communication
+
+**Local State → useState/useReducer**
+- Component-specific state
+- Form inputs (unless complex)
+- Toggle states
+- Temporary UI state
+
+**Form State → React Hook Form**
+- Complex forms with validation
+- Multi-step wizards
+- Dynamic form fields
+- File uploads
+
+## 2. React Query (TanStack Query) Patterns
+
+### Query Patterns for Procurement Data
+```tsx
+// ✅ CORRECT - Comprehensive query setup
+import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
+
+// Query keys factory pattern
+export const purchaseRequestKeys = {
+  all: ['purchase-requests'] as const,
+  lists: () => [...purchaseRequestKeys.all, 'list'] as const,
+  list: (filters: PurchaseRequestFilters) => [...purchaseRequestKeys.lists(), { filters }] as const,
+  details: () => [...purchaseRequestKeys.all, 'detail'] as const,
+  detail: (id: string) => [...purchaseRequestKeys.details(), id] as const,
+  statistics: () => [...purchaseRequestKeys.all, 'statistics'] as const,
+};
+
+// Query hooks with proper error handling and types
+export const usePurchaseRequests = (filters: PurchaseRequestFilters = {}) => {
+  return useQuery({
+    queryKey: purchaseRequestKeys.list(filters),
+    queryFn: () => PurchaseRequestService.getAll(filters),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes (previously cacheTime)
+    refetchOnWindowFocus: false,
+    retry: (failureCount, error) => {
+      // Don't retry on 4xx errors
+      if (error.response?.status >= 400 && error.response?.status < 500) {
+        return false;
+      }
+      return failureCount < 3;
+    },
+  });
+};
+
+export const usePurchaseRequest = (id: string, enabled = true) => {
+  return useQuery({
+    queryKey: purchaseRequestKeys.detail(id),
+    queryFn: () => PurchaseRequestService.getById(id),
+    enabled: enabled && !!id,
+    staleTime: 2 * 60 * 1000, // 2 minutes
+    retry: false, // Don't retry on detail queries
+  });
+};
+
+// Infinite query for large datasets
+export const usePurchaseRequestsInfinite = (filters: PurchaseRequestFilters = {}) => {
+  return useInfiniteQuery({
+    queryKey: [...purchaseRequestKeys.list(filters), 'infinite'],
+    queryFn: ({ pageParam = 1 }) => 
+      PurchaseRequestService.getAll({ ...filters, page: pageParam }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, allPages) => {
+      return lastPage.hasNextPage ? allPages.length + 1 : undefined;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+};
+```
+
+### Mutation Patterns with Optimistic Updates
+```tsx
+// ✅ CORRECT - Mutation with optimistic updates and error handling
+export const useCreatePurchaseRequest = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: (data: CreatePurchaseRequestRequest) => 
+      PurchaseRequestService.create(data),
+    
+    onMutate: async (newRequest) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: purchaseRequestKeys.lists() });
+      
+      // Snapshot previous value
+      const previousRequests = queryClient.getQueryData(
+        purchaseRequestKeys.list({})
+      );
+      
+      // Optimistically update
+      queryClient.setQueryData(
+        purchaseRequestKeys.list({}),
+        (old: PurchaseRequest[] = []) => [
+          {
+            id: `temp-${Date.now()}`,
+            ...newRequest,
+            status: 'draft',
+            created_at: new Date().toISOString(),
+          },
+          ...old,
+        ]
+      );
+      
+      return { previousRequests };
+    },
+    
+    onError: (error, newRequest, context) => {
+      // Revert optimistic update
+      if (context?.previousRequests) {
+        queryClient.setQueryData(
+          purchaseRequestKeys.list({}),
+          context.previousRequests
+        );
+      }
+      
+      // Show error notification
+      notify({
+        variants: 'error',
+        title: error.message || 'Failed to create purchase request',
+        duration: 5000,
+      });
+    },
+    
+    onSuccess: (newRequest, variables, context) => {
+      // Invalidate and refetch
+      queryClient.invalidateQueries({ queryKey: purchaseRequestKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: purchaseRequestKeys.statistics() });
+      
+      // Set the new request data
+      queryClient.setQueryData(
+        purchaseRequestKeys.detail(newRequest.id),
+        newRequest
+      );
+      
+      notify({
+        variant: 'success',
+        title: 'Purchase request created successfully',
+        duration: 3000,
+      });
+    },
+    
+    onSettled: () => {
+      // Always invalidate after 3 seconds to ensure data consistency
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: purchaseRequestKeys.all });
+      }, 3000);
+    },
+  });
+};
+
+export const useUpdatePurchaseRequest = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: UpdatePurchaseRequestRequest }) =>
+      PurchaseRequestService.update(id, data),
+    
+    onMutate: async ({ id, data }) => {
+      await queryClient.cancelQueries({ queryKey: purchaseRequestKeys.detail(id) });
+      
+      const previousRequest = queryClient.getQueryData(
+        purchaseRequestKeys.detail(id)
+      );
+      
+      // Optimistic update
+      queryClient.setQueryData(
+        purchaseRequestKeys.detail(id),
+        (old: PurchaseRequest) => ({
+          ...old,
+          ...data,
+          updated_at: new Date().toISOString(),
+        })
+      );
+      
+      return { previousRequest };
+    },
+    
+    onError: (error, { id }, context) => {
+      if (context?.previousRequest) {
+        queryClient.setQueryData(
+          purchaseRequestKeys.detail(id),
+          context.previousRequest
+        );
+      }
+    },
+    
+    onSuccess: (updatedRequest, { id }) => {
+      queryClient.setQueryData(
+        purchaseRequestKeys.detail(id),
+        updatedRequest
+      );
+      
+      // Update in lists as well
+      queryClient.invalidateQueries({ queryKey: purchaseRequestKeys.lists() });
+    },
+  });
+};
+```
+
+### Real-time Updates with React Query
+```tsx
+// ✅ CORRECT - Real-time updates with WebSocket integration
+import { useQueryClient } from '@tanstack/react-query';
+import { useWebSocket } from '@src/hooks/useWebSocket';
+
+export const usePurchaseRequestRealtime = () => {
+  const queryClient = useQueryClient();
+  
+  useWebSocket('purchase-requests', {
+    onMessage: (event) => {
+      const { type, data } = JSON.parse(event.data);
+      
+      switch (type) {
+        case 'purchase_request_created':
+          queryClient.invalidateQueries({ queryKey: purchaseRequestKeys.lists() });
+          queryClient.setQueryData(
+            purchaseRequestKeys.detail(data.id),
+            data
+          );
+          break;
+          
+        case 'purchase_request_updated':
+          queryClient.setQueryData(
+            purchaseRequestKeys.detail(data.id),
+            (old: PurchaseRequest) => ({ ...old, ...data })
+          );
+          queryClient.invalidateQueries({ queryKey: purchaseRequestKeys.lists() });
+          break;
+          
+        case 'purchase_request_status_changed':
+          queryClient.setQueryData(
+            purchaseRequestKeys.detail(data.id),
+            (old: PurchaseRequest) => ({ 
+              ...old, 
+              status: data.status,
+              updated_at: data.updated_at 
+            })
+          );
+          break;
+      }
+    },
+    onError: (error) => {
+      console.error('WebSocket error:', error);
+    },
+  });
+};
+```
+
+## 3. Redux Toolkit Patterns
+
+### Store Configuration with RTK
+```tsx
+// ✅ CORRECT - Modern Redux store setup
+import { configureStore } from '@reduxjs/toolkit';
+import { persistStore, persistReducer } from 'redux-persist';
+import storage from 'redux-persist/lib/storage';
+
+import authSlice from './slices/authSlice';
+import uiSlice from './slices/uiSlice';
+import userPreferencesSlice from './slices/userPreferencesSlice';
+import procurementSlice from './slices/procurementSlice';
+
+const persistConfig = {
+  key: 'root',
+  storage,
+  whitelist: ['auth', 'userPreferences'], // Only persist these slices
+};
+
+const rootReducer = {
+  auth: persistReducer(persistConfig, authSlice),
+  ui: uiSlice,
+  userPreferences: userPreferencesSlice,
+  procurement: procurementSlice,
+};
+
+export const store = configureStore({
+  reducer: rootReducer,
+  middleware: (getDefaultMiddleware) =>
+    getDefaultMiddleware({
+      serializableCheck: {
+        ignoredActions: ['persist/PERSIST', 'persist/REHYDRATE'],
+      },
+    }),
+  devTools: process.env.NODE_ENV !== 'production',
+});
+
+export const persistor = persistStore(store);
+export type RootState = ReturnType<typeof store.getState>;
+export type AppDispatch = typeof store.dispatch;
+```
+
+### Modern Slice Patterns
+```tsx
+// ✅ CORRECT - Comprehensive auth slice with RTK
+import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
+
+interface AuthState {
+  user: User | null;
+  token: string | null;
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  error: string | null;
+  permissions: Permission[];
+  lastActivity: string | null;
+}
+
+const initialState: AuthState = {
+  user: null,
+  token: null,
+  isAuthenticated: false,
+  isLoading: false,
+  error: null,
+  permissions: [],
+  lastActivity: null,
+};
+
+// Async thunks
+export const loginUser = createAsyncThunk(
+  'auth/loginUser',
+  async (credentials: LoginCredentials, { rejectWithValue }) => {
+    try {
+      const response = await AuthService.login(credentials);
+      
+      // Store token in secure storage
+      localStorage.setItem('auth_token', response.token);
+      
+      return {
+        user: response.user,
+        token: response.token,
+        permissions: response.permissions,
+      };
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+export const refreshToken = createAsyncThunk(
+  'auth/refreshToken',
+  async (_, { getState, rejectWithValue }) => {
+    try {
+      const state = getState() as RootState;
+      const currentToken = state.auth.token;
+      
+      if (!currentToken) {
+        throw new Error('No token available');
+      }
+      
+      const response = await AuthService.refreshToken(currentToken);
+      localStorage.setItem('auth_token', response.token);
+      
+      return {
+        token: response.token,
+        user: response.user,
+      };
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+export const logoutUser = createAsyncThunk(
+  'auth/logoutUser',
+  async (_, { getState }) => {
+    const state = getState() as RootState;
+    const token = state.auth.token;
+    
+    if (token) {
+      try {
+        await AuthService.logout(token);
+      } catch (error) {
+        console.warn('Logout API call failed:', error);
+      }
+    }
+    
+    localStorage.removeItem('auth_token');
+    return null;
+  }
+);
+
+const authSlice = createSlice({
+  name: 'auth',
+  initialState,
+  reducers: {
+    clearError: (state) => {
+      state.error = null;
+    },
+    
+    updateLastActivity: (state) => {
+      state.lastActivity = new Date().toISOString();
+    },
+    
+    updateUserProfile: (state, action: PayloadAction<Partial<User>>) => {
+      if (state.user) {
+        state.user = { ...state.user, ...action.payload };
+      }
+    },
+    
+    addPermission: (state, action: PayloadAction<Permission>) => {
+      if (!state.permissions.some(p => p.id === action.payload.id)) {
+        state.permissions.push(action.payload);
+      }
+    },
+    
+    removePermission: (state, action: PayloadAction<string>) => {
+      state.permissions = state.permissions.filter(p => p.id !== action.payload);
+    },
+  },
+  
+  extraReducers: (builder) => {
+    builder
+      // Login cases
+      .addCase(loginUser.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(loginUser.fulfilled, (state, action) => {
+        state.isLoading = false;
+        state.isAuthenticated = true;
+        state.user = action.payload.user;
+        state.token = action.payload.token;
+        state.permissions = action.payload.permissions;
+        state.lastActivity = new Date().toISOString();
+        state.error = null;
+      })
+      .addCase(loginUser.rejected, (state, action) => {
+        state.isLoading = false;
+        state.isAuthenticated = false;
+        state.user = null;
+        state.token = null;
+        state.permissions = [];
+        state.error = action.payload as string;
+      })
+      
+      // Refresh token cases
+      .addCase(refreshToken.fulfilled, (state, action) => {
+        state.token = action.payload.token;
+        state.user = action.payload.user;
+        state.lastActivity = new Date().toISOString();
+      })
+      .addCase(refreshToken.rejected, (state) => {
+        // Token refresh failed, log out user
+        state.isAuthenticated = false;
+        state.user = null;
+        state.token = null;
+        state.permissions = [];
+      })
+      
+      // Logout cases
+      .addCase(logoutUser.fulfilled, (state) => {
+        return initialState; // Reset to initial state
+      });
+  },
+});
+
+export const {
+  clearError,
+  updateLastActivity,
+  updateUserProfile,
+  addPermission,
+  removePermission,
+} = authSlice.actions;
+
+export default authSlice.reducer;
+
+// Selectors
+export const selectAuth = (state: RootState) => state.auth;
+export const selectUser = (state: RootState) => state.auth.user;
+export const selectIsAuthenticated = (state: RootState) => state.auth.isAuthenticated;
+export const selectUserPermissions = (state: RootState) => state.auth.permissions;
+export const selectHasPermission = (permission: string) => (state: RootState) =>
+  state.auth.permissions.some(p => p.name === permission);
+```
+
+### UI State Management
+```tsx
+// ✅ CORRECT - UI state slice for global UI concerns
+import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+
+interface NotificationState {
+  id: string;
+  type: 'success' | 'error' | 'warning' | 'info';
+  message: string;
+  duration?: number;
+  actions?: Array<{ label: string; onClick: () => void }>;
+}
+
+interface UIState {
+  theme: 'light' | 'dark' | 'auto';
+  sidebarCollapsed: boolean;
+  notifications: NotificationState[];
+  globalLoading: boolean;
+  modals: Record<string, boolean>;
+  activeModule: 'pr' | 'po' | 'otb' | 'dp' | 'cr';
+  breadcrumbs: Array<{ label: string; path?: string }>;
+}
+
+const initialState: UIState = {
+  theme: 'light',
+  sidebarCollapsed: false,
+  notifications: [],
+  globalLoading: false,
+  modals: {},
+  activeModule: 'pr',
+  breadcrumbs: [],
+};
+
+const uiSlice = createSlice({
+  name: 'ui',
+  initialState,
+  reducers: {
+    setTheme: (state, action: PayloadAction<UIState['theme']>) => {
+      state.theme = action.payload;
+    },
+    
+    toggleSidebar: (state) => {
+      state.sidebarCollapsed = !state.sidebarCollapsed;
+    },
+    
+    setSidebarCollapsed: (state, action: PayloadAction<boolean>) => {
+      state.sidebarCollapsed = action.payload;
+    },
+    
+    addNotification: (state, action: PayloadAction<Omit<NotificationState, 'id'>>) => {
+      const notification: NotificationState = {
+        id: `notification-${Date.now()}-${Math.random()}`,
+        ...action.payload,
+      };
+      state.notifications.push(notification);
+    },
+    
+    removeNotification: (state, action: PayloadAction<string>) => {
+      state.notifications = state.notifications.filter(
+        notification => notification.id !== action.payload
+      );
+    },
+    
+    clearAllNotifications: (state) => {
+      state.notifications = [];
+    },
+    
+    setGlobalLoading: (state, action: PayloadAction<boolean>) => {
+      state.globalLoading = action.payload;
+    },
+    
+    openModal: (state, action: PayloadAction<string>) => {
+      state.modals[action.payload] = true;
+    },
+    
+    closeModal: (state, action: PayloadAction<string>) => {
+      state.modals[action.payload] = false;
+    },
+    
+    setActiveModule: (state, action: PayloadAction<UIState['activeModule']>) => {
+      state.activeModule = action.payload;
+    },
+    
+    setBreadcrumbs: (state, action: PayloadAction<UIState['breadcrumbs']>) => {
+      state.breadcrumbs = action.payload;
+    },
+  },
+});
+
+export const {
+  setTheme,
+  toggleSidebar,
+  setSidebarCollapsed,
+  addNotification,
+  removeNotification,
+  clearAllNotifications,
+  setGlobalLoading,
+  openModal,
+  closeModal,
+  setActiveModule,
+  setBreadcrumbs,
+} = uiSlice.actions;
+
+export default uiSlice.reducer;
+
+// Selectors
+export const selectUI = (state: RootState) => state.ui;
+export const selectTheme = (state: RootState) => state.ui.theme;
+export const selectSidebarCollapsed = (state: RootState) => state.ui.sidebarCollapsed;
+export const selectNotifications = (state: RootState) => state.ui.notifications;
+export const selectModalState = (modalId: string) => (state: RootState) =>
+  state.ui.modals[modalId] || false;
+export const selectActiveModule = (state: RootState) => state.ui.activeModule;
+export const selectBreadcrumbs = (state: RootState) => state.ui.breadcrumbs;
+```
+
+## 4. Custom Hooks for State Management
+
+### Typed Redux Hooks
+```tsx
+// ✅ CORRECT - Typed Redux hooks
+import { useDispatch, useSelector, TypedUseSelectorHook } from 'react-redux';
+import type { RootState, AppDispatch } from '@src/store';
+
+export const useAppDispatch = () => useDispatch<AppDispatch>();
+export const useAppSelector: TypedUseSelectorHook<RootState> = useSelector;
+
+// Custom hook for authentication
+export const useAuth = () => {
+  const dispatch = useAppDispatch();
+  const auth = useAppSelector(selectAuth);
+  
+  const login = useCallback((credentials: LoginCredentials) => {
+    return dispatch(loginUser(credentials));
+  }, [dispatch]);
+  
+  const logout = useCallback(() => {
+    return dispatch(logoutUser());
+  }, [dispatch]);
+  
+  const refreshUserToken = useCallback(() => {
+    return dispatch(refreshToken());
+  }, [dispatch]);
+  
+  const hasPermission = useCallback((permission: string) => {
+    return auth.permissions.some(p => p.name === permission);
+  }, [auth.permissions]);
+  
+  return {
+    ...auth,
+    login,
+    logout,
+    refreshToken: refreshUserToken,
+    hasPermission,
+  };
+};
+```
+
+### Combined State Management Hook
+```tsx
+// ✅ CORRECT - Hook combining React Query and Redux
+export const usePurchaseRequestManagement = (filters: PurchaseRequestFilters = {}) => {
+  // React Query for server state
+  const {
+    data: requests,
+    isLoading: isLoadingRequests,
+    error: requestsError,
+    refetch: refetchRequests,
+  } = usePurchaseRequests(filters);
+  
+  const createMutation = useCreatePurchaseRequest();
+  const updateMutation = useUpdatePurchaseRequest();
+  
+  // Redux for client state
+  const dispatch = useAppDispatch();
+  const { user, hasPermission } = useAuth();
+  const activeModule = useAppSelector(selectActiveModule);
+  
+  // Set active module when component mounts
+  useEffect(() => {
+    if (activeModule !== 'pr') {
+      dispatch(setActiveModule('pr'));
+    }
+  }, [activeModule, dispatch]);
+  
+  // Actions
+  const createRequest = useCallback(async (data: CreatePurchaseRequestRequest) => {
+    try {
+      dispatch(setGlobalLoading(true));
+      const result = await createMutation.mutateAsync(data);
+      dispatch(addNotification({
+        type: 'success',
+        message: 'Purchase request created successfully',
+      }));
+      return result;
+    } catch (error) {
+      dispatch(addNotification({
+        type: 'error',
+        message: error.message || 'Failed to create purchase request',
+      }));
+      throw error;
+    } finally {
+      dispatch(setGlobalLoading(false));
+    }
+  }, [createMutation, dispatch]);
+  
+  const updateRequest = useCallback(async (id: string, data: UpdatePurchaseRequestRequest) => {
+    try {
+      const result = await updateMutation.mutateAsync({ id, data });
+      dispatch(addNotification({
+        type: 'success',
+        message: 'Purchase request updated successfully',
+      }));
+      return result;
+    } catch (error) {
+      dispatch(addNotification({
+        type: 'error',
+        message: error.message || 'Failed to update purchase request',
+      }));
+      throw error;
+    }
+  }, [updateMutation, dispatch]);
+  
+  // Permissions
+  const canCreate = hasPermission('purchase_request:create');
+  const canEdit = hasPermission('purchase_request:edit');
+  const canApprove = hasPermission('purchase_request:approve');
+  const canDelete = hasPermission('purchase_request:delete');
+  
+  return {
+    // Data
+    requests: requests || [],
+    isLoading: isLoadingRequests,
+    error: requestsError,
+    
+    // Actions
+    createRequest,
+    updateRequest,
+    refetchRequests,
+    
+    // Loading states
+    isCreating: createMutation.isPending,
+    isUpdating: updateMutation.isPending,
+    
+    // Permissions
+    canCreate,
+    canEdit,
+    canApprove,
+    canDelete,
+    
+    // User context
+    currentUser: user,
+  };
+};
+```
+
+## 5. Form State Management with React Hook Form
+
+### Complex Form with Validation
+```tsx
+// ✅ CORRECT - Advanced form management
+import { useForm, useFieldArray, useFormContext } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+
+// Form context for complex forms
+interface PurchaseRequestFormContextType {
+  isEditing: boolean;
+  originalData?: PurchaseRequest;
+}
+
+const PurchaseRequestFormContext = createContext<PurchaseRequestFormContextType | null>(null);
+
+export const usePurchaseRequestForm = (
+  initialData?: PurchaseRequest,
+  onSubmit?: (data: PurchaseRequestFormData) => Promise<void>
+) => {
+  const form = useForm<PurchaseRequestFormData>({
+    resolver: zodResolver(purchaseRequestSchema),
+    defaultValues: initialData || getDefaultFormValues(),
+    mode: 'onChange', // Validate on change for better UX
+  });
+  
+  const { fields, append, remove, move } = useFieldArray({
+    control: form.control,
+    name: 'items',
+  });
+  
+  // Watch specific fields for calculations
+  const watchedItems = form.watch('items');
+  const priority = form.watch('priority');
+  
+  // Calculated values
+  const totalCost = useMemo(() => {
+    return watchedItems.reduce((sum, item) => {
+      return sum + (item.quantity * item.unitPrice);
+    }, 0);
+  }, [watchedItems]);
+  
+  const isHighValue = totalCost > 10000;
+  
+  // Auto-save draft functionality
+  const { mutate: saveDraft } = useSavePurchaseRequestDraft();
+  
+  useEffect(() => {
+    const subscription = form.watch((value, { name, type }) => {
+      if (type === 'change' && form.formState.isDirty) {
+        // Debounce auto-save
+        const timeoutId = setTimeout(() => {
+          saveDraft({
+            ...value,
+            id: initialData?.id || 'draft',
+            isDraft: true,
+          });
+        }, 2000);
+        
+        return () => clearTimeout(timeoutId);
+      }
+    });
+    
+    return () => subscription.unsubscribe();
+  }, [form, saveDraft, initialData?.id]);
+  
+  // Form submission with error handling
+  const handleSubmit = form.handleSubmit(async (data) => {
+    try {
+      await onSubmit?.(data);
+      form.reset(); // Reset form after successful submission
+    } catch (error) {
+      // Set server errors on form fields
+      if (error.fieldErrors) {
+        Object.entries(error.fieldErrors).forEach(([field, message]) => {
+          form.setError(field as keyof PurchaseRequestFormData, {
+            type: 'server',
+            message: message as string,
+          });
+        });
+      }
+      throw error;
+    }
+  });
+  
+  // Field management
+  const addItem = useCallback(() => {
+    append({ name: '', quantity: 1, unitPrice: 0 });
+  }, [append]);
+  
+  const removeItem = useCallback((index: number) => {
+    if (fields.length > 1) {
+      remove(index);
+    }
+  }, [remove, fields.length]);
+  
+  const moveItem = useCallback((from: number, to: number) => {
+    move(from, to);
+  }, [move]);
+  
+  // Validation helpers
+  const validateField = useCallback(async (fieldName: keyof PurchaseRequestFormData) => {
+    await form.trigger(fieldName);
+  }, [form]);
+  
+  const clearFieldError = useCallback((fieldName: keyof PurchaseRequestFormData) => {
+    form.clearErrors(fieldName);
+  }, [form]);
+  
+  return {
+    // Form state
+    ...form,
+    
+    // Field arrays
+    items: fields,
+    addItem,
+    removeItem,
+    moveItem,
+    
+    // Calculated values
+    totalCost,
+    isHighValue,
+    
+    // Actions
+    handleSubmit,
+    validateField,
+    clearFieldError,
+    
+    // Status
+    isDirty: form.formState.isDirty,
+    isValid: form.formState.isValid,
+    isSubmitting: form.formState.isSubmitting,
+    
+    // Conditional logic
+    requiresApproval: isHighValue || priority === 'high',
+  };
+};
+```
+
+## 6. State Synchronization Patterns
+
+### Cross-Tab Communication
+```tsx
+// ✅ CORRECT - Cross-tab state synchronization
+export const useCrossTabSync = () => {
+  const dispatch = useAppDispatch();
+  const { token } = useAuth();
+  
+  useEffect(() => {
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key === 'auth_token') {
+        if (event.newValue === null && token) {
+          // Token was removed in another tab - logout
+          dispatch(logoutUser());
+        } else if (event.newValue && !token) {
+          // Token was added in another tab - refresh app state
+          window.location.reload();
+        }
+      }
+    };
+    
+    const handleVisibilityChange = () => {
+      if (!document.hidden && token) {
+        // Tab became visible - refresh token if needed
+        dispatch(refreshToken());
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [dispatch, token]);
+};
+```
+
+### Background Sync
+```tsx
+// ✅ CORRECT - Background data synchronization
+export const useBackgroundSync = () => {
+  const queryClient = useQueryClient();
+  
+  useEffect(() => {
+    const syncInterval = setInterval(() => {
+      // Invalidate stale queries in the background
+      queryClient.invalidateQueries({
+        stale: true,
+        refetchType: 'none', // Don't refetch immediately
+      });
+    }, 5 * 60 * 1000); // Every 5 minutes
+    
+    return () => clearInterval(syncInterval);
+  }, [queryClient]);
+  
+  // Network status aware background sync
+  useEffect(() => {
+    const handleOnline = () => {
+      // Refetch failed queries when coming back online
+      queryClient.invalidateQueries({
+        predicate: (query) => query.state.status === 'error',
+      });
+    };
+    
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, [queryClient]);
+};
+```
+
+## Best Practices Summary
+
+### 1. State Management Checklist
+- [ ] Use React Query for all server state
+- [ ] Use Redux Toolkit for global client state
+- [ ] Use React Hook Form for complex forms
+- [ ] Implement proper error boundaries
+- [ ] Add loading states and error handling
+- [ ] Use TypeScript for all state definitions
+- [ ] Implement optimistic updates where appropriate
+- [ ] Add real-time updates for collaborative features
+
+### 2. Performance Considerations
+- [ ] Use proper query key factories
+- [ ] Implement query invalidation strategies
+- [ ] Use optimistic updates judiciously
+- [ ] Debounce expensive operations
+- [ ] Implement background refetching
+- [ ] Use proper cache configuration
+- [ ] Monitor bundle size impact
+
+### 3. Common Anti-Patterns to Avoid
+- ❌ Storing server state in Redux
+- ❌ Not using query keys properly
+- ❌ Over-invalidating queries
+- ❌ Not handling loading states
+- ❌ Ignoring error handling
+- ❌ Not using TypeScript
+- ❌ Putting too much in global state
+- ❌ Not cleaning up subscriptions
+
+This comprehensive state management approach ensures your Impetus procurement platform has robust, scalable, and maintainable state handling across all modules.

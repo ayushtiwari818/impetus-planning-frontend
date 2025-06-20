@@ -1,0 +1,286 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Development Workflow Rules
+
+:::tip[Development Excellence]
+Maintain high code quality and efficient workflows throughout the development process
+:::
+
+## 1. Code Quality Standards
+
+:::info[Quality Requirements]
+- Follow ESLint configuration from `.eslintrc.js`
+- Use Prettier for code formatting (configured in `.prettierrc`)
+- Run `npm run lint:fix` before committing
+- Use `npm run format` for consistent formatting
+- All code must pass lint checks without warnings
+:::
+
+## 2. Git Workflow
+
+:::warning[Git Rules]
+- Use Husky pre-commit hooks (configured in `.husky/`)
+- Run lint-staged checks before commits
+- Use conventional commit messages with project-specific format
+- Create feature branches from main/develop
+- Squash commits when merging to keep history clean
+:::
+
+:::code-group
+```bash [Commit Message Format]
+# ✅ Required commit message pattern
+ID:MPTS-8111; DONE:100; HOURS:8; feat: add GENDS DataTable to OTB listing page
+ID:MPTS-8112; DONE:50; HOURS:4; fix: resolve pagination issue in PR listing
+ID:MPTS-8113; DONE:75; HOURS:6; refactor: migrate Button component to use GENDS
+ID:MPTS-8114; DONE:100; HOURS:2; docs: update GENDS component usage guidelines
+
+# Format: ID:<jira-ticket-id>; DONE:<percentage>; HOURS:<hours>; <type>(<scope>): <description>
+
+# Conventional commit types:
+# feat: new feature
+# fix: bug fix
+# refactor: code refactoring
+# docs: documentation changes
+# style: formatting, missing semicolons, etc
+# test: adding tests
+# chore: maintenance tasks
+
+# ❌ Wrong format (missing project tracking info)
+feat: add new component
+fix: bug in component
+```
+:::
+
+:::info[Commit Message Components]
+- **ID**: Project ticket identifier (e.g., MPTS-8111)
+- **DONE**: Completion percentage (0-100)
+- **HOURS**: Time spent in hours
+- **Type**: Conventional commit type (feat, fix, refactor, docs, etc.)
+- **Scope**: Optional scope in parentheses (component, module, etc.)
+- **Description**: Brief description of changes
+:::
+
+:::tip[Commit Message Guidelines]
+- Keep descriptions concise and clear
+- Use present tense ("add" not "added")
+- Use lowercase for descriptions
+- Reference GENDS components when relevant
+- Update DONE percentage accurately
+- Track actual hours spent
+:::
+
+:::code-group
+```bash [Example Commit Messages]
+# ✅ Feature additions
+ID:MPTS-8001; DONE:100; HOURS:6; feat(otb): add GENDS DataTable with virtualization
+ID:MPTS-8002; DONE:80; HOURS:4; feat(forms): implement OTB creation form with GENDS components
+
+# ✅ Bug fixes
+ID:MPTS-8003; DONE:100; HOURS:2; fix(dropdown): resolve GENDS dropdown scroll issue
+ID:MPTS-8004; DONE:100; HOURS:3; fix(pagination): correct DataTable pagination behavior
+
+# ✅ Refactoring
+ID:MPTS-8005; DONE:70; HOURS:8; refactor(components): migrate from nitrozen to GENDS components
+ID:MPTS-8006; DONE:100; HOURS:4; refactor(tables): replace custom table with GENDS DataTable
+
+# ✅ Documentation
+ID:MPTS-8007; DONE:100; HOURS:2; docs(gends): update component usage examples
+ID:MPTS-8008; DONE:50; HOURS:1; docs(readme): add TanStack virtualization guidelines
+
+# ✅ Testing
+ID:MPTS-8009; DONE:90; HOURS:5; test(otb): add comprehensive DataTable tests
+ID:MPTS-8010; DONE:100; HOURS:3; test(forms): implement GENDS form validation tests
+```
+:::
+
+:::warning[Commit Requirements]
+- All commits MUST follow the ID:XXXX; DONE:XX; HOURS:XX; pattern
+- DONE percentage should reflect actual completion of the task
+- HOURS should be realistic time tracking
+- Ticket ID must match project management system
+- Conventional commit type is mandatory
+:::
+
+## 3. Testing Requirements
+
+:::danger[Testing Mandatory]
+- Write unit tests for all new components
+- Use Jest and React Testing Library (configured)
+- Test GENDS component integration
+- Maintain test coverage above 80%
+- Run `npm run test:cov` to check coverage
+:::
+
+:::code-group
+```jsx [Component Testing]
+// ✅ Component testing with GENDS
+import { render, screen } from '@testing-library/react';
+import { Button } from 'gends';
+import MyComponent from './MyComponent';
+
+test('renders GENDS button correctly', () => {
+  render(<MyComponent />);
+  const button = screen.getByRole('button');
+  expect(button).toBeInTheDocument();
+});
+```
+:::
+
+## 4. File Organization
+
+:::code-group
+```text [Component Structure]
+ComponentName/
+├── index.jsx           # Main component
+├── ComponentName.test.js # Tests
+├── styles.js          # Styled components (if needed)
+├── constants.js       # Component constants
+├── hooks.js           # Custom hooks
+└── README.md          # Component documentation
+```
+:::
+
+## 5. Documentation Standards
+
+:::tip[Documentation Rules]
+- Document all custom components with JSDoc
+- Include usage examples in component README
+- Document GENDS component integrations
+- Update API documentation for new features
+- Use inline comments for complex logic
+:::
+
+:::code-group
+```jsx [JSDoc Example]
+/**
+ * Custom table component using GENDS DataTable
+ * @param {Array} data - Table data array
+ * @param {Array} columns - Column configuration
+ * @param {Function} onRowClick - Row click handler
+ * @returns {JSX.Element} Rendered table component
+ */
+const CustomTable = ({ data, columns, onRowClick }) => {
+  // Component implementation
+};
+```
+:::
+
+## 6. Environment Management
+
+:::warning[Environment Rules]
+- Use environment variables from `config.js`
+- Separate dev/staging/production configurations
+- Never hardcode API endpoints or secrets
+- Use `.env` files for local development overrides
+:::
+
+:::code-group
+```javascript [Environment Usage]
+// ✅ Proper environment usage
+const apiUrl = BROWSER_CONFIG.API_URL;
+const isProduction = BROWSER_CONFIG.ENV === 'production';
+```
+:::
+
+## 7. Dependency Management
+
+:::info[Dependency Strategy]
+- Use exact versions for critical dependencies
+- Keep GENDS package updated to latest stable version
+- Regular dependency audits with `npm audit`
+- Document any new dependency additions
+- Use yarn.lock for consistent installs
+:::
+
+## 8. Performance Monitoring
+
+:::tip[Performance Tools]
+- Use React DevTools Profiler during development
+- Monitor bundle size with each build
+- Test performance on slower devices/networks
+- Use Lighthouse for performance audits
+- Monitor Core Web Vitals in development
+:::
+
+## 9. Error Handling
+
+:::warning[Error Management]
+- Implement proper error boundaries
+- Use GENDS notification system for user feedback
+- Log errors appropriately (development vs production)
+- Test error scenarios and edge cases
+- Provide meaningful error messages
+:::
+
+:::code-group
+```jsx [Error Boundary]
+// ✅ Error boundary with GENDS
+import { Text } from 'gends';
+
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <Text>Something went wrong. Please refresh the page.</Text>;
+    }
+    return this.props.children;
+  }
+}
+```
+:::
+
+## 10. Code Review Guidelines
+
+:::info[Review Checklist]
+- Review for GENDS component usage
+- Check for performance implications
+- Verify security best practices
+- Ensure proper error handling
+- Validate test coverage and quality
+- Check for accessibility compliance
+:::
+
+## 11. Development Tools
+
+:::tip[Recommended Tools]
+- Use Vite dev server for fast development
+- Use React Developer Tools browser extension
+- Use Redux DevTools for state debugging
+- Use browser developer tools for performance analysis
+- Use VS Code extensions or cursor for React/GENDS development
+:::
+
+## 12. Deployment Checklist
+
+:::warning[Pre-Deployment Requirements]
+- [ ] All tests passing
+- [ ] Lint checks passed
+- [ ] Bundle size acceptable
+- [ ] Performance tests passed
+- [ ] Security audit completed
+- [ ] GENDS components properly integrated
+- [ ] Documentation updated
+- [ ] Error handling implemented
+- [ ] Mobile responsiveness verified
+:::
+
+## 13. Debugging Guidelines
+
+:::tip[Debugging Tools]
+- Use React DevTools for component debugging
+- Use Redux DevTools for state debugging
+- Use browser Network tab for API debugging
+- Use console.log sparingly (remove before commit)
+- Use React Query DevTools for data fetching debugging
+:::

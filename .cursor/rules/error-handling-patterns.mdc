@@ -1,0 +1,827 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Impetus Error Handling Patterns
+
+## Error Handling Philosophy for the Impetus Procurement Platform
+
+Our error handling approach for the Impetus procurement platform follows a multi-layered strategy, ensuring robust, user-friendly, and accessible error management across all modules and UI components. GENDS is the primary UI library, but these patterns apply to all code in the platform.
+
+### 1. Layered Error Handling Strategy
+
+Our error handling approach for the Impetus procurement platform follows a multi-layered strategy:
+
+```
+    ┌─────────────────────────────────┐
+   │     User Interface Layer        │  ← GENDS notifications & feedback
+  ┌─────────────────────────────────────┐
+ │     Component Error Boundaries      │  ← React error boundaries
+┌───────────────────────────────────────────┐
+│        API & Network Error Layer         │  ← TanStack Query error handling
+└─────────────────────────────────────────────┘
+```
+
+## 2. Notification System
+
+### Toast Notifications with GENDS
+```typescript
+// src/hooks/useNotifications.ts
+import { notify } from 'gends';
+
+export const useNotifications = () => {
+  const showSuccess = (message: string, description?: string) => {
+    notify({title: message + (description ? `: ${description}` : '', variant: "success"}));
+  };
+
+  const showError = (message: string, description?: string) => {
+    notify({title: message + (description ? `: ${description}` : '', variant: "error"}));
+  };
+
+  const showWarning = (message: string, description?: string) => {
+    notify({title: message + (description ? `: ${description}` : '', variant: "warning"}));
+  };
+
+  const showInfo = (message: string, description?: string) => {
+    notify({title: message + (description ? `: ${description}` : '', variant: "info"}));
+  };
+
+  return { showSuccess, showError, showWarning, showInfo };
+};
+```
+
+// Usage example in a component
+```typescript
+import { useNotifications } from '@src/hooks/useNotifications';
+
+const MyComponent = () => {
+  const { showSuccess, showError } = useNotifications();
+
+  const handleAction = async () => {
+    try {
+      // ...some logic
+      showSuccess('Action completed', 'The operation was successful.');
+    } catch (e) {
+      showError('Action failed', 'Please try again later.');
+    }
+  };
+
+  return <Button onClick={handleAction}>Do Action</Button>;
+};
+```
+
+### Error Display Components
+```typescript
+// src/components/ErrorDisplay.tsx
+import { Text, IconButton } from 'gends';
+import { IcRefresh, IcClose, IcInfo, IcWarning, IcError } from '@gofynd/gends-icons';
+
+interface ErrorDisplayProps {
+  title?: string;
+  message: string;
+  onRetry?: () => void;
+  onDismiss?: () => void;
+  variant?: 'error' | 'warning' | 'info';
+  showIcon?: boolean;
+}
+
+const getVariantStyles = (variant: 'error' | 'warning' | 'info') => {
+  switch (variant) {
+    case 'error':
+      return {
+        icon: <IcError className="text-red-600" />,
+        bg: 'bg-red-50',
+        border: 'border-red-200',
+      };
+    case 'warning':
+      return {
+        icon: <IcWarning className="text-yellow-600" />,
+        bg: 'bg-yellow-50',
+        border: 'border-yellow-200',
+      };
+    case 'info':
+    default:
+      return {
+        icon: <IcInfo className="text-blue-600" />,
+        bg: 'bg-blue-50',
+        border: 'border-blue-200',
+      };
+  }
+};
+
+export const ErrorDisplay: React.FC<ErrorDisplayProps> = ({
+  title = 'Something went wrong',
+  message,
+  onRetry,
+  onDismiss,
+  variant = 'error',
+  showIcon = true,
+}) => {
+  const styles = getVariantStyles(variant);
+  return (
+    <div className={`mb-4 p-4 rounded-lg border ${styles.bg} ${styles.border} flex items-start gap-4`}>
+      {showIcon && (
+        <div className="mt-1">{styles.icon}</div>
+      )}
+      <div className="flex-1">
+        <Text variant="bodyMedium" className="font-medium text-gray-900">
+          {title}
+        </Text>
+        <Text variant="bodySmall" className="mt-1 text-gray-600">
+          {message}
+        </Text>
+        {onRetry && (
+          <div className="mt-3">
+            <IconButton
+              icon={<IcRefresh />}
+              onClick={onRetry}
+              size="sm"
+              appearance="secondary"
+              aria-label="Retry action"
+            >
+              Try Again
+            </IconButton>
+          </div>
+        )}
+      </div>
+      {onDismiss && (
+        <IconButton
+          icon={<IcClose />}
+          onClick={onDismiss}
+          size="sm"
+          appearance="ghost"
+          aria-label="Dismiss error"
+        />
+      )}
+    </div>
+  );
+};
+```
+
+## 3. Form Error Handling
+
+### Form Validation Error Display
+```typescript
+// src/components/forms/FormField.tsx
+import { Input, InputLabel, Text } from 'gends';
+import { cn } from '@src/lib/utils';
+
+interface FormFieldProps {
+  label: string;
+  name: string;
+  value: string;
+  onChange: (value: string) => void;
+  error?: string;
+  required?: boolean;
+  placeholder?: string;
+  disabled?: boolean;
+  type?: 'text' | 'email' | 'password' | 'number';
+}
+
+export const FormField: React.FC<FormFieldProps> = ({
+  label,
+  name,
+  value,
+  onChange,
+  error,
+  required = false,
+  placeholder,
+  disabled = false,
+  type = 'text',
+}) => {
+  const hasError = Boolean(error);
+  
+  return (
+    <div className="space-y-2">
+      <InputLabel 
+        htmlFor={name}
+        label={label}
+        className={cn(hasError && 'text-red-600')}
+      >
+        {required && <span className="text-red-500 ml-1">*</span>}
+      </InputLabel>
+      
+      <Input
+        id={name}
+        name={name}
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        disabled={disabled}
+        validationState={hasError ? 'error' : 'valid'}
+        validationMessage={error}
+        aria-invalid={hasError}
+        aria-describedby={hasError ? `${name}-error` : undefined}
+      />
+      
+      {hasError && (
+        <Text 
+          id={`${name}-error`}
+          variant="bodySmall" 
+          className="text-red-600"
+          role="alert"
+          aria-live="polite"
+        >
+          {error}
+        </Text>
+      )}
+    </div>
+  );
+};
+```
+
+### Advanced Form Error Handling
+```typescript
+// src/components/forms/CreateOTBForm.tsx
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { Button, Modal } from 'gends';
+import { useNotifications } from '@src/hooks/useNotifications';
+
+const createOTBSchema = z.object({
+  name: z.string().min(1, 'OTB name is required').max(100, 'Name too long'),
+  description: z.string().min(10, 'Description must be at least 10 characters'),
+  budget: z.number().min(0, 'Budget must be positive'),
+  startDate: z.date(),
+  endDate: z.date(),
+  category: z.string().min(1, 'Category is required'),
+}).refine((data) => data.endDate > data.startDate, {
+  message: 'End date must be after start date',
+  path: ['endDate'],
+});
+
+type CreateOTBFormData = z.infer<typeof createOTBSchema>;
+
+export const CreateOTBForm: React.FC = () => {
+  const { showSuccess, showError } = useNotifications();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isValid },
+    reset,
+    setError,
+  } = useForm<CreateOTBFormData>({
+    resolver: zodResolver(createOTBSchema),
+    mode: 'onChange',
+  });
+
+  const onSubmit = async (data: CreateOTBFormData) => {
+    setIsSubmitting(true);
+    
+    try {
+      await createOTB(data);
+      showSuccess('OTB created successfully', 'Your Open to Buy has been created and is ready for use.');
+      reset();
+    } catch (error) {
+      if (error instanceof ValidationError) {
+        // Handle server-side validation errors
+        error.fieldErrors.forEach(({ field, message }) => {
+          setError(field as keyof CreateOTBFormData, {
+            type: 'server',
+            message,
+          });
+        });
+      } else if (error instanceof NetworkError) {
+        showError(
+          'Network Error',
+          'Unable to connect to server. Please check your internet connection and try again.'
+        );
+      } else {
+        showError(
+          'Failed to create OTB',
+          'An unexpected error occurred. Please try again or contact support if the problem persists.'
+        );
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+      <FormField
+        label="OTB Name"
+        name="name"
+        {...register('name')}
+        error={errors.name?.message}
+        required
+        placeholder="Enter OTB name"
+      />
+      
+      <FormField
+        label="Description"
+        name="description"
+        {...register('description')}
+        error={errors.description?.message}
+        required
+        placeholder="Describe the purpose of this OTB"
+      />
+      
+      {/* Global form error handling */}
+      {errors.root && (
+        <ErrorDisplay
+          title="Form Validation Error"
+          message={errors.root.message}
+          variant="error"
+        />
+      )}
+      
+      <div className="flex justify-end gap-3">
+        <Button
+          type="button"
+          appearance="secondary"
+          onClick={() => reset()}
+        >
+          Cancel
+        </Button>
+        
+        <Button
+          type="submit"
+          appearance="primary"
+          loading={isSubmitting}
+          disabled={!isValid || isSubmitting}
+        >
+          {isSubmitting ? 'Creating...' : 'Create OTB'}
+        </Button>
+      </div>
+    </form>
+  );
+};
+```
+
+## 4. DataTable Error Handling
+
+### TanStack Table Error States
+```typescript
+// src/components/tables/OTBDataTable.tsx
+import { DataTable, Text, Button } from 'gends';
+import { IcRefresh } from '@gofynd/gends-icons';
+import { useOTBList } from '@src/hooks/useOTBList';
+import { ErrorDisplay } from '@src/components/ErrorDisplay';
+
+export const OTBDataTable: React.FC = () => {
+  const {
+    data,
+    isLoading,
+    error,
+    refetch,
+    isRefetching,
+  } = useOTBList();
+
+  const { table, columns } = useDataTable({
+    data: data?.items || [],
+    columns: otbColumns,
+  });
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12">
+        <ErrorDisplay
+          title="Failed to load OTB data"
+          message={error.message || 'Unable to fetch OTB list. Please try again.'}
+          onRetry={() => refetch()}
+          variant="error"
+        />
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        {/* Loading shimmer */}
+        <div className="animate-pulse">
+          <div className="h-8 bg-gray-200 rounded mb-4"></div>
+          <div className="space-y-2">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="h-12 bg-gray-100 rounded"></div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <Text variant="headingMedium">Open to Buy List</Text>
+        
+        <Button
+          appearance="secondary"
+          onClick={() => refetch()}
+          loading={isRefetching}
+          prefixIcon={<IcRefresh />}
+        >
+          Refresh
+        </Button>
+      </div>
+      
+      {data?.items.length === 0 ? (
+        <div className="text-center py-12">
+          <Text variant="bodyLarge" className="text-gray-500">
+            No OTB records found
+          </Text>
+          <Text variant="bodyMedium" className="text-gray-400 mt-2">
+            Create your first Open to Buy to get started
+          </Text>
+        </div>
+      ) : (
+        <DataTable
+          table={table}
+          enableRowSelection
+          tableHeight="500px"
+          onError={(error) => {
+            console.error('DataTable error:', error);
+            // Handle table-specific errors
+          }}
+        />
+      )}
+    </div>
+  );
+};
+```
+
+## 5. API Error Handling with React Query
+
+### Centralized Error Handling
+```typescript
+// src/lib/api.ts
+import { toast } from 'react-hot-toast';
+
+export class APIError extends Error {
+  constructor(
+    public status: number,
+    public code: string,
+    message: string,
+    public details?: Record<string, any>
+  ) {
+    super(message);
+    this.name = 'APIError';
+  }
+}
+
+export class ValidationError extends APIError {
+  constructor(
+    public fieldErrors: Array<{ field: string; message: string }>,
+    message = 'Validation failed'
+  ) {
+    super(422, 'VALIDATION_ERROR', message);
+    this.name = 'ValidationError';
+  }
+}
+
+export class NetworkError extends Error {
+  constructor(message = 'Network connection failed') {
+    super(message);
+    this.name = 'NetworkError';
+  }
+}
+
+const handleAPIError = (error: any): never => {
+  if (error.response?.data) {
+    const { status, data } = error.response;
+    
+    switch (status) {
+      case 400:
+        throw new APIError(status, 'BAD_REQUEST', data.message || 'Bad request');
+      
+      case 401:
+        // Redirect to login
+        window.location.href = '/login';
+        throw new APIError(status, 'UNAUTHORIZED', 'Session expired');
+      
+      case 403:
+        throw new APIError(status, 'FORBIDDEN', 'Access denied');
+      
+      case 404:
+        throw new APIError(status, 'NOT_FOUND', 'Resource not found');
+      
+      case 422:
+        throw new ValidationError(
+          data.fieldErrors || [],
+          data.message || 'Validation failed'
+        );
+      
+      case 500:
+        throw new APIError(status, 'SERVER_ERROR', 'Internal server error');
+      
+      default:
+        throw new APIError(status, 'UNKNOWN_ERROR', data.message || 'Unknown error');
+    }
+  }
+  
+  if (error.code === 'NETWORK_ERROR' || !error.response) {
+    throw new NetworkError();
+  }
+  
+  throw new APIError(0, 'UNKNOWN_ERROR', error.message || 'Unknown error occurred');
+};
+```
+
+### Query Error Handling
+```typescript
+// src/hooks/useOTBList.ts
+import { useQuery } from '@tanstack/react-query';
+import { getOTBList } from '@src/services/otbService';
+import { useNotifications } from '@src/hooks/useNotifications';
+
+export const useOTBList = (filters?: OTBFilters) => {
+  const { showError } = useNotifications();
+
+  return useQuery({
+    queryKey: ['otb-list', filters],
+    queryFn: () => getOTBList(filters),
+    retry: (failureCount, error) => {
+      // Don't retry on client errors (4xx)
+      if (error instanceof APIError && error.status >= 400 && error.status < 500) {
+        return false;
+      }
+      // Retry up to 3 times for network/server errors
+      return failureCount < 3;
+    },
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+    onError: (error) => {
+      if (error instanceof NetworkError) {
+        showError(
+          'Connection Error',
+          'Unable to connect to server. Please check your internet connection.'
+        );
+      } else if (error instanceof APIError && error.status >= 500) {
+        showError(
+          'Server Error',
+          'Our servers are experiencing issues. Please try again later.'
+        );
+      }
+      // Don't show notifications for 4xx errors - let components handle them
+    },
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    cacheTime: 10 * 60 * 1000, // 10 minutes
+  });
+};
+```
+
+## 6. React Error Boundaries
+
+### Global Error Boundary
+```typescript
+// src/components/ErrorBoundary.tsx
+import React, { Component, ErrorInfo, ReactNode } from 'react';
+import { Button, Text } from 'gends';
+import { IcRefresh, IcBug } from '@gofynd/gends-icons';
+
+interface Props {
+  children: ReactNode;
+  fallback?: ReactNode;
+  onError?: (error: Error, errorInfo: ErrorInfo) => void;
+}
+
+interface State {
+  hasError: boolean;
+  error?: Error;
+}
+
+export class ErrorBoundary extends Component<Props, State> {
+  constructor(props: Props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error): State {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('Error Boundary caught an error:', error, errorInfo);
+    
+    // Log to monitoring service
+    this.logErrorToService(error, errorInfo);
+    
+    // Call custom error handler
+    this.props.onError?.(error, errorInfo);
+  }
+
+  private logErrorToService = (error: Error, errorInfo: ErrorInfo) => {
+    // Integration with error monitoring service
+    if (process.env.NODE_ENV === 'production') {
+      // Sentry, LogRocket, etc.
+      console.error('Production error logged:', { error, errorInfo });
+    }
+  };
+
+  private handleRetry = () => {
+    this.setState({ hasError: false, error: undefined });
+  };
+
+  render() {
+    if (this.state.hasError) {
+      if (this.props.fallback) {
+        return this.props.fallback;
+      }
+
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+          <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-6 text-center">
+            <div className="w-16 h-16 mx-auto mb-4 bg-red-100 rounded-full flex items-center justify-center">
+              <IcBug className="w-8 h-8 text-red-600" />
+            </div>
+            
+            <Text variant="headingMedium" className="mb-2">
+              Something went wrong
+            </Text>
+            
+            <Text variant="bodyMedium" className="text-gray-600 mb-6">
+              We're sorry, but something unexpected happened. Please try refreshing the page.
+            </Text>
+            
+            {process.env.NODE_ENV === 'development' && this.state.error && (
+              <details className="mb-6 text-left">
+                <summary className="cursor-pointer text-sm text-gray-500 mb-2">
+                  Error Details (Development)
+                </summary>
+                <pre className="text-xs bg-gray-100 p-3 rounded overflow-auto">
+                  {this.state.error.stack}
+                </pre>
+              </details>
+            )}
+            
+            <div className="flex gap-3 justify-center">
+              <Button
+                appearance="secondary"
+                onClick={() => window.location.reload()}
+              >
+                Reload Page
+              </Button>
+              
+              <Button
+                appearance="primary"
+                onClick={this.handleRetry}
+                prefixIcon={<IcRefresh />}
+              >
+                Try Again
+              </Button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+```
+
+### Feature-Specific Error Boundaries
+```typescript
+// src/components/boundaries/TableErrorBoundary.tsx
+export const TableErrorBoundary: React.FC<{ children: ReactNode }> = ({ children }) => {
+  return (
+    <ErrorBoundary
+      fallback={
+        <div className="border border-gray-200 rounded-lg p-8 text-center">
+          <Text variant="bodyLarge" className="text-gray-600 mb-4">
+            Unable to display table data
+          </Text>
+          <Button
+            appearance="secondary"
+            onClick={() => window.location.reload()}
+            prefixIcon={<IcRefresh />}
+          >
+            Refresh Page
+          </Button>
+        </div>
+      }
+      onError={(error) => {
+        console.error('Table error:', error);
+        // Log table-specific errors
+      }}
+    >
+      {children}
+    </ErrorBoundary>
+  );
+};
+```
+
+## 7. File Upload Error Handling
+
+### GENDS FileUpload Error Handling
+```typescript
+// src/components/FileUploadField.tsx
+import { FileUpload, Text } from 'gends';
+import { useState } from 'react';
+import { useNotifications } from '@src/hooks/useNotifications';
+
+interface FileUploadFieldProps {
+  label: string;
+  accept?: string;
+  maxFileSize?: number; // in bytes
+  onFileChange: (files: File[]) => void;
+  error?: string;
+}
+
+export const FileUploadField: React.FC<FileUploadFieldProps> = ({
+  label,
+  accept = '.xlsx,.xls,.csv',
+  maxFileSize = 5 * 1024 * 1024, // 5MB
+  onFileChange,
+  error,
+}) => {
+  const [files, setFiles] = useState<File[]>([]);
+  const [uploadError, setUploadError] = useState<string>('');
+  const { showError } = useNotifications();
+
+  const handleFileChange = (newFiles: File[]) => {
+    setUploadError('');
+    
+    try {
+      // Validate file size
+      const invalidFiles = newFiles.filter(file => file.size > maxFileSize);
+      if (invalidFiles.length > 0) {
+        throw new Error(`File size exceeds ${Math.round(maxFileSize / 1024 / 1024)}MB limit`);
+      }
+
+      // Validate file type
+      const allowedTypes = accept.split(',').map(type => type.trim());
+      const invalidTypes = newFiles.filter(file => {
+        const extension = '.' + file.name.split('.').pop()?.toLowerCase();
+        return !allowedTypes.includes(extension);
+      });
+      
+      if (invalidTypes.length > 0) {
+        throw new Error(`Invalid file type. Allowed: ${accept}`);
+      }
+
+      setFiles(newFiles);
+      onFileChange(newFiles);
+      
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'File upload failed';
+      setUploadError(errorMessage);
+      showError('File Upload Error', errorMessage);
+      setFiles([]);
+      onFileChange([]);
+    }
+  };
+
+  const handleRetry = () => {
+    setUploadError('');
+    setFiles([]);
+  };
+
+  return (
+    <div className="space-y-2">
+      <Text variant="labelMedium">{label}</Text>
+      
+      <FileUpload
+        files={files}
+        onFileChange={handleFileChange}
+        accept={accept}
+        maxFileSize={maxFileSize}
+        onRetry={handleRetry}
+        uploadMode="replace"
+        layout="grid"
+        className={uploadError || error ? 'border-red-300' : ''}
+      />
+      
+      {(uploadError || error) && (
+        <Text variant="bodySmall" className="text-red-600" role="alert">
+          {uploadError || error}
+        </Text>
+      )}
+    </div>
+  );
+};
+```
+
+## 8. Best Practices Summary
+
+### Error Handling Principles
+
+1. **User-Friendly Messages**: Always show clear, actionable error messages
+2. **Graceful Degradation**: Provide fallback UI when components fail
+3. **Retry Mechanisms**: Offer retry options for transient failures
+4. **Accessibility**: Ensure error messages are announced to screen readers
+5. **Logging**: Log errors for debugging while protecting user privacy
+6. **Context-Aware**: Show relevant error information based on user context
+7. **Progressive Enhancement**: Handle errors at multiple levels
+8. **Performance**: Avoid error states that block the entire application
+
+### Error State Checklist
+
+- [ ] Network connectivity issues handled
+- [ ] Server error responses handled appropriately  
+- [ ] Form validation errors displayed clearly
+- [ ] File upload errors with helpful messages
+- [ ] Loading states with timeout handling
+- [ ] Permissions and authentication errors
+- [ ] Data formatting and parsing errors
+- [ ] Component crash recovery with error boundaries
+- [ ] Accessibility compliance for error states
+- [ ] Mobile-responsive error displays
+
+This comprehensive error handling strategy ensures the Impetus procurement platform provides a robust, user-friendly experience even when things go wrong.

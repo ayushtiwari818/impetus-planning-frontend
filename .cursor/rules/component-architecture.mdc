@@ -1,0 +1,1061 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Advanced Component Architecture Patterns
+
+## Component Design Philosophy
+
+### 1. SOLID Principles for React Components
+
+Apply SOLID principles specifically to React components in the Impetus procurement system:
+
+**Single Responsibility Principle (SRP)**
+
+```tsx
+// ✅ CORRECT - Each component has one clear responsibility
+const PurchaseRequestHeader = ({ request }: { request: PurchaseRequest }) => (
+  <header className="pr-header">
+    <h1>{request.title}</h1>
+    <StatusBadge status={request.status} />
+  </header>
+);
+
+const PurchaseRequestActions = ({
+  request,
+  onAction,
+}: PurchaseRequestActionsProps) => (
+  <div className="pr-actions">
+    <Button onClick={() => onAction("approve")}>Approve</Button>
+    <Button onClick={() => onAction("reject")}>Reject</Button>
+  </div>
+);
+
+// ❌ WRONG - Component doing too many things
+const PurchaseRequestEverything = ({ request }) => {
+  // Header rendering + Actions + Status + Form logic + API calls
+  // This violates SRP
+};
+```
+
+**Open/Closed Principle (OCP)**
+
+```tsx
+// ✅ CORRECT - Extensible through props and composition
+interface BaseCardProps {
+  children: React.ReactNode;
+  variant?: "default" | "highlighted" | "urgent";
+  actions?: React.ReactNode;
+}
+
+const BaseCard = ({
+  children,
+  variant = "default",
+  actions,
+}: BaseCardProps) => (
+  <div className={`base-card base-card--${variant}`}>
+    <div className="base-card__content">{children}</div>
+    {actions && <div className="base-card__actions">{actions}</div>}
+  </div>
+);
+
+// Extend without modifying the original
+const PurchaseRequestCard = ({ request }: { request: PurchaseRequest }) => (
+  <BaseCard
+    variant={request.priority === "high" ? "urgent" : "default"}
+    actions={<PurchaseRequestActions request={request} />}
+  >
+    <PurchaseRequestHeader request={request} />
+    <PurchaseRequestSummary request={request} />
+  </BaseCard>
+);
+```
+
+### 2. Component Composition Patterns
+
+**Container/Presentational Pattern**
+
+```tsx
+// ✅ CORRECT - Presentational component (pure, predictable)
+interface PurchaseRequestListViewProps {
+  requests: PurchaseRequest[];
+  loading: boolean;
+  error: string | null;
+  onRequestSelect: (id: string) => void;
+  onRequestCreate: () => void;
+}
+
+export const PurchaseRequestListView = memo<PurchaseRequestListViewProps>(
+  ({ requests, loading, error, onRequestSelect, onRequestCreate }) => {
+    if (loading) return <Spinner />;
+    if (error)
+      return (
+        <MessageBox size="m" type="error">
+          {error}
+        </MessageBox>
+      );
+
+    return (
+      <div className="pr-list">
+        <div className="pr-list__header">
+          <h2>Purchase Requests</h2>
+          <Button onClick={onRequestCreate}>Create New</Button>
+        </div>
+
+        <div className="pr-list__grid">
+          {requests.map((request) => (
+            <PurchaseRequestCard
+              key={request.id}
+              request={request}
+              onClick={() => onRequestSelect(request.id)}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+);
+
+// ✅ CORRECT - Container component (handles state and side effects)
+export const PurchaseRequestListContainer = () => {
+  const { data: requests, isLoading, error } = usePurchaseRequests();
+  const navigate = useNavigate();
+
+  const handleRequestSelect = useCallback(
+    (id: string) => {
+      navigate(`/pr/${id}`);
+    },
+    [navigate]
+  );
+
+  const handleRequestCreate = useCallback(() => {
+    navigate("/pr/create");
+  }, [navigate]);
+
+  return (
+    <PurchaseRequestListView
+      requests={requests || []}
+      loading={isLoading}
+      error={error?.message || null}
+      onRequestSelect={handleRequestSelect}
+      onRequestCreate={handleRequestCreate}
+    />
+  );
+};
+```
+
+**Compound Components Pattern**
+
+```tsx
+// ✅ CORRECT - Compound component for complex UI structures
+interface PurchaseRequestFormContextType {
+  values: PurchaseRequestFormValues;
+  errors: Record<string, string>;
+  isSubmitting: boolean;
+  updateField: (field: string, value: any) => void;
+}
+
+const PurchaseRequestFormContext =
+  createContext<PurchaseRequestFormContextType | null>(null);
+
+export const PurchaseRequestForm = ({
+  children,
+  onSubmit,
+}: PurchaseRequestFormProps) => {
+  const {
+    control,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm();
+  const [values, setValues] = useState({});
+
+  const updateField = useCallback((field: string, value: any) => {
+    setValues((prev) => ({ ...prev, [field]: value }));
+  }, []);
+
+  const contextValue = useMemo(
+    () => ({
+      values,
+      errors,
+      isSubmitting,
+      updateField,
+    }),
+    [values, errors, isSubmitting, updateField]
+  );
+
+  return (
+    <PurchaseRequestFormContext.Provider value={contextValue}>
+      <form onSubmit={handleSubmit(onSubmit)} className="pr-form">
+        {children}
+      </form>
+    </PurchaseRequestFormContext.Provider>
+  );
+};
+
+// Sub-components
+PurchaseRequestForm.Header = ({ title }: { title: string }) => (
+  <div className="pr-form__header">
+    <h2>{title}</h2>
+  </div>
+);
+
+PurchaseRequestForm.Field = ({ name, label, required }: FormFieldProps) => {
+  const context = useContext(PurchaseRequestFormContext);
+  if (!context)
+    throw new Error("Form.Field must be used within PurchaseRequestForm");
+
+  return (
+    <div className="pr-form__field">
+      <Input
+        label={label}
+        required={required}
+        value={context.values[name] || ""}
+        onChange={(value) => context.updateField(name, value)}
+        error={context.errors[name]}
+      />
+    </div>
+  );
+};
+
+PurchaseRequestForm.Actions = ({ children }: { children: React.ReactNode }) => (
+  <div className="pr-form__actions">{children}</div>
+);
+
+// Usage
+const CreatePurchaseRequestPage = () => (
+  <PurchaseRequestForm onSubmit={handleSubmit}>
+    <PurchaseRequestForm.Header title="Create Purchase Request" />
+    <PurchaseRequestForm.Field name="title" label="Title" required />
+    <PurchaseRequestForm.Field name="description" label="Description" />
+    <PurchaseRequestForm.Actions>
+      <Button type="submit">Create Request</Button>
+      <Button variant="secondary" onClick={handleCancel}>
+        Cancel
+      </Button>
+    </PurchaseRequestForm.Actions>
+  </PurchaseRequestForm>
+);
+```
+
+### 3. Advanced React Patterns
+
+**Render Props Pattern for Data Fetching**
+
+```tsx
+interface DataFetcherProps<T> {
+  queryKey: QueryKey;
+  queryFn: QueryFunction<T>;
+  children: (data: {
+    data: T | undefined;
+    loading: boolean;
+    error: Error | null;
+    refetch: () => void;
+  }) => React.ReactNode;
+}
+
+export const DataFetcher = <T,>({
+  queryKey,
+  queryFn,
+  children,
+}: DataFetcherProps<T>) => {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey,
+    queryFn,
+  });
+
+  return children({
+    data,
+    loading: isLoading,
+    error,
+    refetch,
+  });
+};
+
+// Usage
+const PurchaseRequestDetail = ({ id }: { id: string }) => (
+  <DataFetcher
+    queryKey={["purchase-request", id]}
+    queryFn={() => fetchPurchaseRequest(id)}
+  >
+    {({ data: request, loading, error, refetch }) => {
+      if (loading) return <LoadingSpinner />;
+      if (error) return <ErrorMessage error={error} onRetry={refetch} />;
+      if (!request) return <NotFound />;
+
+      return <PurchaseRequestView request={request} />;
+    }}
+  </DataFetcher>
+);
+```
+
+**Higher-Order Components for Cross-Cutting Concerns**
+
+```tsx
+// ✅ CORRECT - HOC for role-based access control
+interface WithRoleAccessProps {
+  requiredRoles: UserRole[];
+  fallback?: React.ComponentType;
+}
+
+export const withRoleAccess = <P extends object>(
+  Component: React.ComponentType<P>,
+  {
+    requiredRoles,
+    fallback: Fallback = UnauthorizedAccess,
+  }: WithRoleAccessProps
+) => {
+  const WrappedComponent = (props: P) => {
+    const { user } = useAuth();
+
+    if (!user || !requiredRoles.some((role) => user.roles.includes(role))) {
+      return <Fallback />;
+    }
+
+    return <Component {...props} />;
+  };
+
+  WrappedComponent.displayName = `withRoleAccess(${
+    Component.displayName || Component.name
+  })`;
+  return WrappedComponent;
+};
+
+// Usage
+const AdminPurchaseRequestActions = withRoleAccess(PurchaseRequestActions, {
+  requiredRoles: ["admin", "procurement_manager"],
+});
+```
+
+### 4. Performance Optimization Patterns
+
+**Memoization Strategies**
+
+```tsx
+// ✅ CORRECT - Strategic memoization
+const PurchaseRequestList = memo<PurchaseRequestListProps>(
+  ({ requests, filters, onFilter, onSort }) => {
+    // Memoize expensive calculations
+    const filteredRequests = useMemo(() => {
+      return requests
+        .filter((request) => applyFilters(request, filters))
+        .sort((a, b) => applySorting(a, b, filters.sortBy, filters.sortOrder));
+    }, [requests, filters]);
+
+    // Memoize callback to prevent child re-renders
+    const handleRequestClick = useCallback(
+      (id: string) => {
+        // Only recreate if dependencies change
+        onFilter({ ...filters, selectedId: id });
+      },
+      [filters, onFilter]
+    );
+
+    // Memoize complex rendering logic
+    const renderRequest = useCallback(
+      (request: PurchaseRequest) => (
+        <PurchaseRequestCard
+          key={request.id}
+          request={request}
+          onClick={handleRequestClick}
+        />
+      ),
+      [handleRequestClick]
+    );
+
+    return <div className="pr-list">{filteredRequests.map(renderRequest)}</div>;
+  },
+  (prevProps, nextProps) => {
+    // Custom comparison for complex props
+    return (
+      prevProps.requests.length === nextProps.requests.length &&
+      prevProps.requests.every(
+        (req, index) =>
+          req.id === nextProps.requests[index]?.id &&
+          req.updated_at === nextProps.requests[index]?.updated_at
+      ) &&
+      isEqual(prevProps.filters, nextProps.filters)
+    );
+  }
+);
+```
+
+**Virtual Scrolling for Large Datasets**
+
+```tsx
+import { useVirtualizer } from "@tanstack/react-virtual";
+
+interface VirtualizedPurchaseRequestListProps {
+  requests: PurchaseRequest[];
+  height: number;
+  estimateItemHeight?: number;
+  onRequestSelect?: (request: PurchaseRequest) => void;
+}
+
+const VirtualizedPurchaseRequestList =
+  memo<VirtualizedPurchaseRequestListProps>(
+    ({ requests, height, estimateItemHeight = 120, onRequestSelect }) => {
+      const parentRef = useRef<HTMLDivElement>(null);
+
+      const virtualizer = useVirtualizer({
+        count: requests.length,
+        getScrollElement: () => parentRef.current,
+        estimateSize: () => estimateItemHeight,
+        overscan: 5,
+        measureElement:
+          typeof window !== 'undefined' &&
+          navigator.userAgent.indexOf('jsdom') === -1
+            ? element => element?.getBoundingClientRect().height
+            : undefined,
+      });
+
+      const handleRequestClick = useCallback(
+        (request: PurchaseRequest) => {
+          onRequestSelect?.(request);
+        },
+        [onRequestSelect]
+      );
+
+      return (
+        <div
+          ref={parentRef}
+          className="virtualized-pr-list"
+          style={{ height: `${height}px`, overflow: 'auto' }}
+        >
+          <div
+            style={{
+              height: `${virtualizer.getTotalSize()}px`,
+              width: '100%',
+              position: 'relative',
+            }}
+          >
+            {virtualizer.getVirtualItems().map((virtualItem) => {
+              const request = requests[virtualItem.index];
+              
+              return (
+                <div
+                  key={virtualItem.key}
+                  data-index={virtualItem.index}
+                  ref={virtualizer.measureElement}
+                  className="virtualized-pr-list__item"
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    transform: `translateY(${virtualItem.start}px)`,
+                  }}
+                >
+                  <PurchaseRequestCard
+                    request={request}
+                    onClick={() => handleRequestClick(request)}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+  );
+
+// Usage example with performance optimizations
+const PurchaseRequestListPage = () => {
+  const [selectedRequest, setSelectedRequest] = useState<PurchaseRequest | null>(null);
+  const { data: requests = [], isLoading } = usePurchaseRequests();
+
+  const handleRequestSelect = useCallback((request: PurchaseRequest) => {
+    setSelectedRequest(request);
+    // Navigate or open modal
+  }, []);
+
+  if (isLoading) return <LoadingSpinner />;
+
+  return (
+    <div className="pr-list-page">
+      <div className="pr-list-page__header">
+        <Text variant="headingLarge">Purchase Requests</Text>
+        <Text variant="bodyMedium" className="text-gray-600">
+          {requests.length} requests found
+        </Text>
+      </div>
+      
+      <VirtualizedPurchaseRequestList
+        requests={requests}
+        height={600}
+        estimateItemHeight={140}
+        onRequestSelect={handleRequestSelect}
+      />
+    </div>
+  );
+};
+```
+
+### 5. Error Boundary Patterns
+
+**Component-Level Error Boundaries**
+
+```tsx
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+  errorInfo: ErrorInfo | null;
+}
+
+class PurchaseRequestErrorBoundary extends Component<
+  {
+    children: React.ReactNode;
+    fallback?: React.ComponentType<{ error: Error }>;
+  },
+  ErrorBoundaryState
+> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false, error: null, errorInfo: null };
+  }
+
+  static getDerivedStateFromError(error: Error): Partial<ErrorBoundaryState> {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    this.setState({ errorInfo });
+
+    // Log to monitoring service
+    console.error("Purchase Request Error:", error, errorInfo);
+
+    // Report to error tracking service
+    if (window.analytics) {
+      window.analytics.track("Component Error", {
+        error: error.message,
+        component: "PurchaseRequest",
+        stack: error.stack,
+        componentStack: errorInfo.componentStack,
+      });
+    }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      const Fallback = this.props.fallback || DefaultErrorFallback;
+      return <Fallback error={this.state.error!} />;
+    }
+
+    return this.props.children;
+  }
+}
+
+// Usage wrapper
+export const withErrorBoundary =
+  (Component: React.ComponentType) => (props: any) =>
+    (
+      <PurchaseRequestErrorBoundary>
+        <Component {...props} />
+      </PurchaseRequestErrorBoundary>
+    );
+```
+
+### 6. Form Patterns with React Hook Form
+
+**Complex Form with Validation**
+
+```tsx
+import { useForm, Controller, useFieldArray } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+
+// Schema-first validation
+const purchaseRequestSchema = z.object({
+  title: z.string().min(1, "Title is required").max(100, "Title too long"),
+  description: z.string().optional(),
+  items: z
+    .array(
+      z.object({
+        name: z.string().min(1, "Item name required"),
+        quantity: z.number().min(1, "Quantity must be positive"),
+        unitPrice: z.number().min(0, "Price must be non-negative"),
+      })
+    )
+    .min(1, "At least one item required"),
+  priority: z.enum(["low", "medium", "high"]),
+  approvers: z.array(z.string()).min(1, "At least one approver required"),
+});
+
+type PurchaseRequestFormData = z.infer<typeof purchaseRequestSchema>;
+
+export const PurchaseRequestForm = ({
+  onSubmit,
+  initialData,
+}: PurchaseRequestFormProps) => {
+  const {
+    control,
+    handleSubmit,
+    watch,
+    formState: { errors, isSubmitting, isDirty },
+    setValue,
+    getValues,
+  } = useForm<PurchaseRequestFormData>({
+    resolver: zodResolver(purchaseRequestSchema),
+    defaultValues: initialData || {
+      title: "",
+      description: "",
+      items: [{ name: "", quantity: 1, unitPrice: 0 }],
+      priority: "medium",
+      approvers: [],
+    },
+  });
+
+  const { fields, append, remove } = useFieldArray({
+    control,
+    name: "items",
+  });
+
+  // Watch for changes to calculate totals
+  const watchedItems = watch("items");
+  const totalCost = useMemo(
+    () =>
+      watchedItems.reduce(
+        (sum, item) => sum + item.quantity * item.unitPrice,
+        0
+      ),
+    [watchedItems]
+  );
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)} className="pr-form">
+      <div className="pr-form__section">
+        <h3>Basic Information</h3>
+
+        <Controller
+          name="title"
+          control={control}
+          render={({ field }) => (
+            <Input
+              {...field}
+              label="Request Title"
+              error={errors.title?.message}
+              required
+            />
+          )}
+        />
+
+        <Controller
+          name="description"
+          control={control}
+          render={({ field }) => (
+            <TextArea
+              {...field}
+              label="Description"
+              error={errors.description?.message}
+            />
+          )}
+        />
+
+        <Controller
+          name="priority"
+          control={control}
+          render={({ field }) => (
+            <Select
+              {...field}
+              label="Priority"
+              options={[
+                { value: "low", label: "Low" },
+                { value: "medium", label: "Medium" },
+                { value: "high", label: "High" },
+              ]}
+              error={errors.priority?.message}
+            />
+          )}
+        />
+      </div>
+
+      <div className="pr-form__section">
+        <div className="pr-form__section-header">
+          <h3>Items</h3>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => append({ name: "", quantity: 1, unitPrice: 0 })}
+          >
+            Add Item
+          </Button>
+        </div>
+
+        {fields.map((field, index) => (
+          <div key={field.id} className="pr-form__item">
+            <Controller
+              name={`items.${index}.name`}
+              control={control}
+              render={({ field }) => (
+                <Input
+                  {...field}
+                  label="Item Name"
+                  error={errors.items?.[index]?.name?.message}
+                />
+              )}
+            />
+
+            <Controller
+              name={`items.${index}.quantity`}
+              control={control}
+              render={({ field }) => (
+                <Input
+                  {...field}
+                  type="number"
+                  label="Quantity"
+                  error={errors.items?.[index]?.quantity?.message}
+                />
+              )}
+            />
+
+            <Controller
+              name={`items.${index}.unitPrice`}
+              control={control}
+              render={({ field }) => (
+                <Input
+                  {...field}
+                  type="number"
+                  step="0.01"
+                  label="Unit Price"
+                  error={errors.items?.[index]?.unitPrice?.message}
+                />
+              )}
+            />
+
+            {fields.length > 1 && (
+              <Button
+                type="button"
+                variant="danger"
+                onClick={() => remove(index)}
+              >
+                Remove
+              </Button>
+            )}
+          </div>
+        ))}
+
+        <div className="pr-form__total">
+          <strong>Total Cost: ${totalCost.toFixed(2)}</strong>
+        </div>
+      </div>
+
+      <div className="pr-form__actions">
+        <Button type="submit" disabled={isSubmitting || !isDirty}>
+          {isSubmitting ? "Creating..." : "Create Request"}
+        </Button>
+        <Button type="button" variant="secondary" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </form>
+  );
+};
+```
+
+### 7. Testing Patterns
+
+**Component Testing with Comprehensive Coverage**
+
+```tsx
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { PurchaseRequestForm } from "./PurchaseRequestForm";
+
+// Test utilities
+const createTestQueryClient = () =>
+  new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  });
+
+const renderWithProviders = (component: React.ReactElement) => {
+  const queryClient = createTestQueryClient();
+
+  return render(
+    <QueryClientProvider client={queryClient}>{component}</QueryClientProvider>
+  );
+};
+
+describe("PurchaseRequestForm", () => {
+  const mockOnSubmit = jest.fn();
+  const mockOnCancel = jest.fn();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("renders all form fields correctly", () => {
+    renderWithProviders(
+      <PurchaseRequestForm onSubmit={mockOnSubmit} onCancel={mockOnCancel} />
+    );
+
+    expect(screen.getByLabelText("Request Title")).toBeInTheDocument();
+    expect(screen.getByLabelText("Description")).toBeInTheDocument();
+    expect(screen.getByLabelText("Priority")).toBeInTheDocument();
+    expect(screen.getByText("Add Item")).toBeInTheDocument();
+  });
+
+  it("validates required fields", async () => {
+    renderWithProviders(
+      <PurchaseRequestForm onSubmit={mockOnSubmit} onCancel={mockOnCancel} />
+    );
+
+    const submitButton = screen.getByText("Create Request");
+    fireEvent.click(submitButton);
+
+    await waitFor(() => {
+      expect(screen.getByText("Title is required")).toBeInTheDocument();
+    });
+
+    expect(mockOnSubmit).not.toHaveBeenCalled();
+  });
+
+  it("calculates total cost correctly", async () => {
+    const user = userEvent.setup();
+
+    renderWithProviders(
+      <PurchaseRequestForm onSubmit={mockOnSubmit} onCancel={mockOnCancel} />
+    );
+
+    // Fill in item details
+    await user.type(screen.getByLabelText("Item Name"), "Test Item");
+    await user.clear(screen.getByLabelText("Quantity"));
+    await user.type(screen.getByLabelText("Quantity"), "5");
+    await user.clear(screen.getByLabelText("Unit Price"));
+    await user.type(screen.getByLabelText("Unit Price"), "10.50");
+
+    await waitFor(() => {
+      expect(screen.getByText("Total Cost: $52.50")).toBeInTheDocument();
+    });
+  });
+
+  it("handles form submission with valid data", async () => {
+    const user = userEvent.setup();
+
+    renderWithProviders(
+      <PurchaseRequestForm onSubmit={mockOnSubmit} onCancel={mockOnCancel} />
+    );
+
+    // Fill form with valid data
+    await user.type(screen.getByLabelText("Request Title"), "Test Request");
+    await user.type(screen.getByLabelText("Item Name"), "Test Item");
+    await user.clear(screen.getByLabelText("Quantity"));
+    await user.type(screen.getByLabelText("Quantity"), "1");
+    await user.clear(screen.getByLabelText("Unit Price"));
+    await user.type(screen.getByLabelText("Unit Price"), "100");
+
+    const submitButton = screen.getByText("Create Request");
+    await user.click(submitButton);
+
+    await waitFor(() => {
+      expect(mockOnSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Test Request",
+          items: expect.arrayContaining([
+            expect.objectContaining({
+              name: "Test Item",
+              quantity: 1,
+              unitPrice: 100,
+            }),
+          ]),
+        })
+      );
+    });
+  });
+});
+```
+
+### 8. Accessibility Patterns
+
+**Comprehensive A11y Implementation**
+
+```tsx
+import { useId, useRef, useEffect } from "react";
+
+interface AccessibleDataTableProps {
+  data: any[];
+  columns: TableColumn[];
+  caption: string;
+  onRowSelect?: (row: any) => void;
+  selectedRowId?: string;
+}
+
+export const AccessibleDataTable = ({
+  data,
+  columns,
+  caption,
+  onRowSelect,
+  selectedRowId,
+}: AccessibleDataTableProps) => {
+  const tableId = useId();
+  const captionId = useId();
+  const announcementRef = useRef<HTMLDivElement>(null);
+
+  // Announce row selection changes
+  useEffect(() => {
+    if (selectedRowId && announcementRef.current) {
+      const selectedRow = data.find((row) => row.id === selectedRowId);
+      if (selectedRow) {
+        announcementRef.current.textContent = `Selected row: ${
+          selectedRow.title || selectedRow.name
+        }`;
+      }
+    }
+  }, [selectedRowId, data]);
+
+  const handleKeyDown = (
+    event: KeyboardEvent<HTMLTableRowElement>,
+    rowData: any
+  ) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onRowSelect?.(rowData);
+    }
+  };
+
+  return (
+    <div className="accessible-table-container">
+      {/* Screen reader announcements */}
+      <div
+        ref={announcementRef}
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      />
+
+      <table
+        id={tableId}
+        role="table"
+        aria-labelledby={captionId}
+        className="accessible-table"
+      >
+        <caption id={captionId} className="accessible-table__caption">
+          {caption}
+        </caption>
+
+        <thead>
+          <tr role="row">
+            {columns.map((column, index) => (
+              <th
+                key={column.key}
+                role="columnheader"
+                scope="col"
+                aria-sort={column.sortable ? "none" : undefined}
+                tabIndex={column.sortable ? 0 : -1}
+                className="accessible-table__header"
+              >
+                {column.title}
+                {column.required && (
+                  <span aria-label="required" className="required-indicator">
+                    *
+                  </span>
+                )}
+              </th>
+            ))}
+          </tr>
+        </thead>
+
+        <tbody>
+          {data.map((row, rowIndex) => (
+            <tr
+              key={row.id}
+              role="row"
+              tabIndex={onRowSelect ? 0 : -1}
+              aria-selected={selectedRowId === row.id}
+              onClick={() => onRowSelect?.(row)}
+              onKeyDown={(e) => handleKeyDown(e, row)}
+              className={`accessible-table__row ${
+                selectedRowId === row.id
+                  ? "accessible-table__row--selected"
+                  : ""
+              }`}
+            >
+              {columns.map((column) => (
+                <td
+                  key={`${row.id}-${column.key}`}
+                  role="gridcell"
+                  className="accessible-table__cell"
+                >
+                  {column.render
+                    ? column.render(row[column.key], row)
+                    : row[column.key]}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+```
+
+## Best Practices Summary
+
+### 1. Component Design Checklist
+
+- [ ] Single responsibility principle applied
+- [ ] Proper TypeScript interfaces defined
+- [ ] Memoization used where beneficial
+- [ ] Error boundaries implemented
+- [ ] Accessibility features included
+- [ ] Comprehensive tests written
+- [ ] Performance optimized
+- [ ] GENDS components used primarily
+
+### 2. Common Anti-Patterns to Avoid
+
+- ❌ Prop drilling beyond 2-3 levels
+- ❌ Components with more than 250 lines
+- ❌ Mixed concerns in single component
+- ❌ Direct DOM manipulation
+- ❌ Uncontrolled state mutations
+- ❌ Missing dependency arrays in hooks
+- ❌ Overuse of useEffect
+- ❌ Inadequate error handling
+
+### 3. Performance Monitoring
+
+```tsx
+// Use React DevTools Profiler API for performance monitoring
+import { Profiler } from "react";
+
+const ProfiledComponent = ({
+  children,
+  id,
+}: {
+  children: React.ReactNode;
+  id: string;
+}) => (
+  <Profiler
+    id={id}
+    onRender={(
+      id,
+      phase,
+      actualDuration,
+      baseDuration,
+      startTime,
+      commitTime
+    ) => {
+      // Log performance metrics
+      if (actualDuration > 16) {
+        // More than one frame
+        console.warn(`Slow component: ${id}`, {
+          phase,
+          actualDuration,
+          baseDuration,
+          startTime,
+          commitTime,
+        });
+      }
+    }}
+  >
+    {children}
+  </Profiler>
+);
+```
+
+This architecture guide ensures your Impetus procurement components are maintainable, performant, accessible, and follow modern React patterns.

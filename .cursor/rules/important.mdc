@@ -1,0 +1,15 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+**MANDATORY UI/UX PROCESS:**
+1. **ALWAYS call Context7 MCP server FIRST** for any UI/UX related changes
+2. **Fetch comprehensive gends documentation** with relevant component topics
+3. **Use documented patterns** and component APIs from the fetched documentation
+4. **Only use styled-components** as fallback when GENDS doesn't have the component 
+**UI Component Hierarchy (MANDATORY):**
+1. **GENDS components (ALWAYS FIRST)** - Use for all UI components (Button, Input, Modal, Text, etc.)
+2. **Context7 MCP server** - REQUIRED for getting latest documentation before implementation
+3. **styled-components** - Only as fallback for custom styling when GENDS doesn't have the component
+4. **CSS modules/plain CSS** - Last resort only

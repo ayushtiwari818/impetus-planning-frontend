@@ -1,0 +1,711 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# GENDS Component Testing Patterns 2024
+
+## Testing Philosophy for GENDS Components
+
+### 1. GENDS-Specific Testing Pyramid
+Our testing approach for the Impetus procurement platform with GENDS components:
+
+```
+           ┌─────────────────┐
+          │   E2E Tests     │  ← User journey tests (10%)
+         ┌─────────────────────┐
+        │  Integration Tests  │  ← GENDS + API tests (20%)
+       ┌───────────────────────────┐
+      │   Component Tests         │  ← GENDS component tests (70%)
+     └─────────────────────────────┘
+```
+
+**Component Tests (70%)**
+- GENDS component interactions
+- TanStack table behaviors
+- Form validation with GENDS inputs
+- Custom cell renderers
+- Accessibility compliance
+
+**Integration Tests (20%)**
+- GENDS components + API interactions
+- State management integration
+- Module communication
+- Route testing with GENDS layouts
+
+**E2E Tests (10%)**
+- Critical user workflows
+- Cross-module scenarios
+- Complete purchase request lifecycle
+
+## 2. GENDS Component Testing Setup
+
+### Essential Test Dependencies
+```bash
+npm install -D vitest @testing-library/react @testing-library/jest-dom @testing-library/user-event jsdom @types/jest
+```
+
+### Test Configuration (vitest.config.ts)
+```typescript
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: './src/test/setup.ts',
+    css: true,
+  },
+});
+```
+
+### Setup File (src/test/setup.ts)
+```typescript
+import '@testing-library/jest-dom';
+import { cleanup } from '@testing-library/react';
+import { vi } from 'vitest';
+
+// Mock ResizeObserver for Radix UI components
+const ResizeObserverMock = vi.fn(() => ({
+  observe: vi.fn(),
+  unobserve: vi.fn(),
+  disconnect: vi.fn(),
+}));
+
+vi.stubGlobal('ResizeObserver', ResizeObserverMock);
+
+// Mock IntersectionObserver for virtualization
+const IntersectionObserverMock = vi.fn(() => ({
+  observe: vi.fn(),
+  unobserve: vi.fn(),
+  disconnect: vi.fn(),
+}));
+
+vi.stubGlobal('IntersectionObserver', IntersectionObserverMock);
+
+// Cleanup after each test
+afterEach(() => {
+  cleanup();
+});
+```
+
+## 3. Testing GENDS DataTable Components
+
+### TanStack Table with GENDS
+```typescript
+// __tests__/OTBListing.test.tsx
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { Provider } from 'react-redux';
+
+import OTBListing from '@src/pages/OTB/OTBListing/listing';
+import { createTestStore } from '@src/test/utils';
+
+// Mock GENDS components that use browser APIs
+vi.mock('gends', async () => {
+  const actual = await vi.importActual('gends');
+  return {
+    ...actual,
+    DataTable: ({ table, children, ...props }: any) => (
+      <div data-testid="gends-datatable" {...props}>
+        <table>
+          <thead>
+            {table.getHeaderGroups().map((headerGroup: any) => (
+              <tr key={headerGroup.id}>
+                {headerGroup.headers.map((header: any) => (
+                  <th key={header.id}>{header.column.columnDef.header}</th>
+                ))}
+              </tr>
+            ))}
+          </thead>
+          <tbody>
+            {table.getRowModel().rows.map((row: any) => (
+              <tr key={row.id}>
+                {row.getVisibleCells().map((cell: any) => (
+                  <td key={cell.id}>{cell.getValue()}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {children}
+      </div>
+    ),
+  };
+});
+
+const createWrapper = () => {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  });
+  const store = createTestStore();
+  
+  return ({ children }: { children: React.ReactNode }) => (
+    <Provider store={store}>
+      <QueryClientProvider client={queryClient}>
+        {children}
+      </QueryClientProvider>
+    </Provider>
+  );
+};
+
+describe('OTB Listing with GENDS DataTable', () => {
+  beforeEach(() => {
+    // Mock API responses
+    vi.mockResolvedValue({
+      data: [
+        { id: '1', otb_number: 'OTB-001', status: 'active', created_at: '2024-01-01' },
+        { id: '2', otb_number: 'OTB-002', status: 'draft', created_at: '2024-01-02' },
+      ],
+      total: 2
+    });
+  });
+
+  it('renders DataTable with correct data and interactions', async () => {
+    const user = userEvent.setup();
+    
+    render(<OTBListing />, { wrapper: createWrapper() });
+    
+    // Wait for data to load
+    await waitFor(() => {
+      expect(screen.getByTestId('gends-datatable')).toBeInTheDocument();
+    });
+    
+    // Verify table headers are accessible
+    expect(screen.getByRole('columnheader', { name: /otb number/i })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: /status/i })).toBeInTheDocument();
+    
+    // Verify data rows
+    expect(screen.getByText('OTB-001')).toBeInTheDocument();
+    expect(screen.getByText('OTB-002')).toBeInTheDocument();
+    
+    // Test row selection
+    const firstRowCheckbox = screen.getByRole('checkbox', { name: /select otb-001/i });
+    await user.click(firstRowCheckbox);
+    
+    expect(firstRowCheckbox).toBeChecked();
+  });
+
+  it('handles search functionality correctly', async () => {
+    const user = userEvent.setup();
+    
+    render(<OTBListing />, { wrapper: createWrapper() });
+    
+    // Wait for initial load
+    await waitFor(() => {
+      expect(screen.getByTestId('gends-datatable')).toBeInTheDocument();
+    });
+    
+    // Find search input
+    const searchInput = screen.getByRole('searchbox', { name: /search by otb number/i });
+    expect(searchInput).toBeInTheDocument();
+    
+    // Type in search
+    await user.type(searchInput, 'OTB-001');
+    
+    // Verify search triggers filtering
+    await waitFor(() => {
+      expect(searchInput).toHaveValue('OTB-001');
+    });
+  });
+
+  it('handles pagination correctly', async () => {
+    const user = userEvent.setup();
+    
+    render(<OTBListing />, { wrapper: createWrapper() });
+    
+    await waitFor(() => {
+      expect(screen.getByTestId('gends-datatable')).toBeInTheDocument();
+    });
+    
+    // Find pagination controls
+    const nextButton = screen.getByRole('button', { name: /next page/i });
+    const pageInfo = screen.getByText(/page 1 of/i);
+    
+    expect(pageInfo).toBeInTheDocument();
+    
+    // Test pagination click
+    if (!nextButton.hasAttribute('disabled')) {
+      await user.click(nextButton);
+      
+      await waitFor(() => {
+        expect(screen.getByText(/page 2 of/i)).toBeInTheDocument();
+      });
+    }
+  });
+
+  it('shows loading state correctly', () => {
+    // Mock loading state
+    vi.mocked(useOTBList).mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      error: null,
+    });
+    
+    render(<OTBListing />, { wrapper: createWrapper() });
+    
+    expect(screen.getByTestId('loading-shimmer')).toBeInTheDocument();
+  });
+});
+```
+
+## 4. Testing GENDS Form Components
+
+### Form Validation and Interaction Testing
+```typescript
+// __tests__/CreateOTBForm.test.tsx
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+
+import CreateOTBForm from '@src/pages/OTB/CreateOTBForm/basicDetailsForm';
+
+describe('GENDS Form Components', () => {
+  it('validates required fields with GENDS Input', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    
+    render(<CreateOTBForm onSubmit={onSubmit} />);
+    
+    // Find GENDS Input components
+    const nameInput = screen.getByLabelText(/otb name/i);
+    const descriptionInput = screen.getByLabelText(/description/i);
+    const submitButton = screen.getByRole('button', { name: /create otb/i });
+    
+    // Test empty form submission
+    await user.click(submitButton);
+    
+    // Verify validation messages appear
+    await waitFor(() => {
+      expect(screen.getByText(/name is required/i)).toBeInTheDocument();
+      expect(screen.getByText(/description is required/i)).toBeInTheDocument();
+    });
+    
+    // Test valid input
+    await user.type(nameInput, 'Test OTB Name');
+    await user.type(descriptionInput, 'Test description');
+    
+    await user.click(submitButton);
+    
+    // Verify form submits successfully
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith({
+        name: 'Test OTB Name',
+        description: 'Test description',
+      });
+    });
+  });
+
+  it('handles GENDS Dropdown selection correctly', async () => {
+    const user = userEvent.setup();
+    
+    render(<CreateOTBForm />);
+    
+    const categoryDropdown = screen.getByRole('combobox', { name: /category/i });
+    
+    // Open dropdown
+    await user.click(categoryDropdown);
+    
+    // Wait for options to appear
+    await waitFor(() => {
+      expect(screen.getByRole('listbox')).toBeInTheDocument();
+    });
+    
+    // Select an option
+    const option = screen.getByRole('option', { name: /clothing/i });
+    await user.click(option);
+    
+    // Verify selection
+    expect(categoryDropdown).toHaveTextContent('Clothing');
+  });
+
+  it('handles GENDS DatePicker correctly', async () => {
+    const user = userEvent.setup();
+    
+    render(<CreateOTBForm />);
+    
+    const dateInput = screen.getByLabelText(/start date/i);
+    
+    // Test date input
+    await user.click(dateInput);
+    
+    // Calendar should open
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: /calendar/i })).toBeInTheDocument();
+    });
+    
+    // Select a date
+    const dateButton = screen.getByRole('button', { name: /15/i });
+    await user.click(dateButton);
+    
+    // Verify date selection
+    expect(dateInput).toHaveValue();
+  });
+
+  it('handles GENDS FileUpload correctly', async () => {
+    const user = userEvent.setup();
+    
+    render(<CreateOTBForm />);
+    
+    const fileInput = screen.getByLabelText(/upload file/i) as HTMLInputElement;
+    
+    // Create test file
+    const testFile = new File(['test content'], 'test.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    });
+    
+    // Upload file
+    await user.upload(fileInput, testFile);
+    
+    // Verify file upload
+    expect(fileInput.files?.[0]).toBe(testFile);
+    expect(fileInput.files).toHaveLength(1);
+    
+    // Check if file appears in UI
+    await waitFor(() => {
+      expect(screen.getByText('test.xlsx')).toBeInTheDocument();
+    });
+  });
+});
+```
+
+## 5. Testing GENDS Modal and Panel Components
+
+### Modal Interaction Testing
+```typescript
+// __tests__/ConfirmModal.test.tsx
+describe('GENDS Modal Components', () => {
+  it('handles Modal open/close correctly', async () => {
+    const user = userEvent.setup();
+    const onConfirm = vi.fn();
+    const onCancel = vi.fn();
+    
+    render(
+      <Modal
+        open={true}
+        setOpen={vi.fn()}
+        headerTitle="Confirm Action"
+        description="Are you sure you want to proceed?"
+        primaryButtonProps={{
+          title: 'Confirm',
+          onClick: onConfirm
+        }}
+        secondaryButtonProps={{
+          title: 'Cancel',
+          onClick: onCancel
+        }}
+      />
+    );
+    
+    // Verify modal content
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText('Confirm Action')).toBeInTheDocument();
+    expect(screen.getByText('Are you sure you want to proceed?')).toBeInTheDocument();
+    
+    // Test button interactions
+    const confirmButton = screen.getByRole('button', { name: /confirm/i });
+    const cancelButton = screen.getByRole('button', { name: /cancel/i });
+    
+    await user.click(confirmButton);
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    
+    await user.click(cancelButton);
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('handles RightPanel correctly', async () => {
+    const user = userEvent.setup();
+    const setOpen = vi.fn();
+    
+    render(
+      <RightPanel
+        open={true}
+        setOpen={setOpen}
+        title="Panel Title"
+        width="m"
+      >
+        <div>Panel Content</div>
+      </RightPanel>
+    );
+    
+    // Verify panel is open
+    expect(screen.getByText('Panel Title')).toBeInTheDocument();
+    expect(screen.getByText('Panel Content')).toBeInTheDocument();
+    
+    // Test close functionality
+    const closeButton = screen.getByRole('button', { name: /close/i });
+    await user.click(closeButton);
+    
+    expect(setOpen).toHaveBeenCalledWith(false);
+  });
+});
+```
+
+## 6. Accessibility Testing for GENDS Components
+
+### Built-in Accessibility Testing
+```typescript
+// __tests__/accessibility.test.tsx
+import { axe, toHaveNoViolations } from 'jest-axe';
+
+expect.extend(toHaveNoViolations);
+
+describe('GENDS Component Accessibility', () => {
+  it('DataTable meets accessibility standards', async () => {
+    const { container } = render(
+      <DataTable
+        table={mockTable}
+        enableRowSelection
+        aria-label="OTB listing table"
+      />
+    );
+    
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
+  });
+
+  it('Form components have proper ARIA labels', () => {
+    render(<CreateOTBForm />);
+    
+    // Verify ARIA labels exist
+    const nameInput = screen.getByLabelText(/otb name/i);
+    const descriptionInput = screen.getByLabelText(/description/i);
+    
+    expect(nameInput).toHaveAttribute('aria-labelledby');
+    expect(descriptionInput).toHaveAttribute('aria-describedby');
+  });
+
+  it('Modal has correct focus management', async () => {
+    const user = userEvent.setup();
+    
+    render(
+      <Modal
+        open={true}
+        setOpen={vi.fn()}
+        headerTitle="Test Modal"
+        primaryButtonProps={{ title: 'OK', onClick: vi.fn() }}
+      />
+    );
+    
+    // Focus should be trapped in modal
+    const modal = screen.getByRole('dialog');
+    expect(modal).toHaveFocus();
+    
+    // Tab should cycle through focusable elements
+    await user.tab();
+    const okButton = screen.getByRole('button', { name: /ok/i });
+    expect(okButton).toHaveFocus();
+  });
+});
+```
+
+## 7. Testing Custom GENDS Renderers
+
+### Custom Cell Renderer Testing
+```typescript
+// __tests__/CustomRenderers.test.tsx
+describe('Custom GENDS Renderers', () => {
+  it('renders action buttons correctly in table cells', async () => {
+    const user = userEvent.setup();
+    const onEdit = vi.fn();
+    const onDelete = vi.fn();
+    
+    const mockData = [
+      { id: '1', name: 'Test Item', status: 'active' }
+    ];
+    
+    const columns = [
+      { accessorKey: 'name', header: 'Name' },
+      {
+        id: 'actions',
+        header: 'Actions',
+        cell: ({ row }: any) => (
+          <div className="flex gap-2">
+            <IconButton
+              icon={<IcEdit />}
+              onClick={() => onEdit(row.original.id)}
+              aria-label={`Edit ${row.original.name}`}
+            />
+            <IconButton
+              icon={<IcDelete />}
+              onClick={() => onDelete(row.original.id)}
+              aria-label={`Delete ${row.original.name}`}
+            />
+          </div>
+        )
+      }
+    ];
+    
+    const { table } = useDataTable({
+      data: mockData,
+      columns,
+    });
+    
+    render(<DataTable table={table} />);
+    
+    // Verify action buttons exist with proper accessibility
+    const editButton = screen.getByRole('button', { name: /edit test item/i });
+    const deleteButton = screen.getByRole('button', { name: /delete test item/i });
+    
+    expect(editButton).toBeInTheDocument();
+    expect(deleteButton).toBeInTheDocument();
+    
+    // Test button functionality
+    await user.click(editButton);
+    expect(onEdit).toHaveBeenCalledWith('1');
+    
+    await user.click(deleteButton);
+    expect(onDelete).toHaveBeenCalledWith('1');
+  });
+});
+```
+
+## 8. Performance Testing with GENDS
+
+### Virtualization Testing
+```typescript
+describe('GENDS Performance', () => {
+  it('handles large datasets efficiently with virtualization', async () => {
+    const largeDataset = Array.from({ length: 10000 }, (_, i) => ({
+      id: i.toString(),
+      name: `Item ${i}`,
+      value: i * 100,
+    }));
+    
+    const { table } = useDataTable({
+      data: largeDataset,
+      columns: [
+        { accessorKey: 'name', header: 'Name' },
+        { accessorKey: 'value', header: 'Value' },
+      ],
+    });
+    
+    const startTime = performance.now();
+    
+    render(
+      <DataTable
+        table={table}
+        tableHeight="400px"
+        enableVirtualization
+      />
+    );
+    
+    const endTime = performance.now();
+    const renderTime = endTime - startTime;
+    
+    // Should render quickly even with large dataset
+    expect(renderTime).toBeLessThan(100); // 100ms threshold
+    
+    // Only visible rows should be rendered
+    const visibleRows = screen.getAllByRole('row');
+    expect(visibleRows.length).toBeLessThan(50); // Much less than 10000
+  });
+});
+```
+
+## 9. Error Boundary Testing
+
+### Component Error Handling
+```typescript
+// __tests__/ErrorBoundary.test.tsx
+describe('GENDS Error Handling', () => {
+  it('handles component errors gracefully', () => {
+    const ThrowError = () => {
+      throw new Error('Test error');
+    };
+    
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    
+    render(
+      <ErrorBoundary fallback={<div>Something went wrong</div>}>
+        <ThrowError />
+      </ErrorBoundary>
+    );
+    
+    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+    
+    spy.mockRestore();
+  });
+});
+```
+
+## 10. Test Utilities for GENDS
+
+### Reusable Test Helpers
+```typescript
+// src/test/utils.ts
+import { configureStore } from '@reduxjs/toolkit';
+import { QueryClient } from '@tanstack/react-query';
+
+export const createTestStore = (initialState = {}) => {
+  return configureStore({
+    reducer: {
+      auth: authSlice.reducer,
+      ui: uiSlice.reducer,
+      // ... other reducers
+    },
+    preloadedState: initialState,
+  });
+};
+
+export const createTestQueryClient = () => {
+  return new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  });
+};
+
+export const renderWithProviders = (
+  ui: React.ReactElement,
+  options: { initialState?: any } = {}
+) => {
+  const store = createTestStore(options.initialState);
+  const queryClient = createTestQueryClient();
+  
+  function Wrapper({ children }: { children: React.ReactNode }) {
+    return (
+      <Provider store={store}>
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
+      </Provider>
+    );
+  }
+  
+  return render(ui, { wrapper: Wrapper, ...options });
+};
+
+// Custom matchers for GENDS components
+export const customMatchers = {
+  toBeValidGENDSInput: (received: HTMLElement) => {
+    const hasLabel = received.hasAttribute('aria-labelledby') || 
+                    received.hasAttribute('aria-label');
+    const hasValidation = received.hasAttribute('aria-invalid') !== null;
+    
+    return {
+      pass: hasLabel && hasValidation,
+      message: () => `Expected element to be a valid GENDS input component`,
+    };
+  },
+};
+```
+
+## Best Practices Summary
+
+1. **Test User Behavior**: Focus on what users can see and do, not implementation details
+2. **Use Semantic Queries**: Prefer `getByRole`, `getByLabelText`, `getByText` over `getByTestId`
+3. **Mock External Dependencies**: Mock APIs, timers, and browser APIs not available in jsdom
+4. **Test Accessibility**: Ensure GENDS components maintain accessibility standards
+5. **Performance Aware**: Test virtualization and large dataset handling
+6. **Error Scenarios**: Test error states and edge cases
+7. **Integration Focus**: Test how GENDS components work together
+8. **Async Testing**: Use `waitFor` and proper async patterns for data fetching
+
+Remember: GENDS components come with built-in accessibility and performance optimizations. Focus your tests on business logic, user interactions, and integration scenarios rather than re-testing the underlying component library functionality.

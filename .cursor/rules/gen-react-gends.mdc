@@ -1,0 +1,39 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Cursor Rules: Using React Components from GenDS via Context7 MCP
+
+1. **Component Usage Source**  
+   Whenever you need to use a React component, always check the GenDS documentation first (fetched via the Context7 MCP server).
+
+2. **Fetching Documentation**  
+   Use the Context7 MCP server to fetch the latest GenDS documentation for React components.  
+   - Search for the component in the GenDS documentation before writing or importing any component code.
+
+3. **Component Implementation**  
+   - If the required component exists in GenDS, use it directly as per the documentation (import and use as shown).
+   - If the component does not exist in GenDS, only then consider creating a custom component.
+
+4. **Import Statements**  
+   - Always import components from the GenDS package (as per the documentation) when available.
+   - Example:
+
+     ```js
+     import { Button } from 'gends';
+     ```
+
+5. **Documentation Reference**  
+   - When using a GenDS component, add a comment referencing the documentation or usage example from Context7 MCP, if available.
+
+6. **Component Updates**  
+   - If GenDS updates or changes a component, update your usage accordingly by re-checking the documentation via Context7 MCP.
+
+7. **Fallback**  
+   - Only write your own implementation if you have confirmed (via Context7 MCP) that GenDS does not provide the required component.
+
+---
+
+**Summary:**  
+Always use GenDS React components as documented by Context7 MCP. Only create custom components if GenDS does not provide them, and always keep your usage in sync with the latest GenDS documentation.

@@ -1,0 +1,1262 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Performance Optimization Rules
+
+:::tip[Performance First]
+Optimize for speed, efficiency, and user experience at every level
+:::
+
+## 1. Bundle Optimization
+
+:::info[Bundle Strategy]
+- Use Vite's built-in tree-shaking and code splitting
+- Import only needed components: `import { Button } from 'gends'`
+- Avoid barrel exports that include unused code
+- Use dynamic imports for heavy modules: `const Module = React.lazy(() => import('./Module'))`
+:::
+
+## 2. React Performance
+
+:::code-group
+```jsx [React Optimization]
+// ✅ Use React.memo for pure components
+const ExpensiveComponent = React.memo(({ data }) => {
+  // Component logic
+});
+
+// ✅ Use useMemo for expensive calculations
+const expensiveValue = useMemo(() => {
+  return heavyComputation(data);
+}, [data]);
+
+// ✅ Use useCallback for stable function references
+const handleClick = useCallback((id) => {
+  onItemClick(id);
+}, [onItemClick]);
+```
+:::
+
+## 3. Code Splitting Strategies
+
+:::code-group
+```jsx [Code Splitting]
+// ✅ Route-level code splitting
+const ProcuroRoutes = React.lazy(() => import('./pages/PR'));
+const OTBRoutes = React.lazy(() => import('./pages/OTB'));
+
+// ✅ Component-level lazy loading
+const HeavyChart = React.lazy(() => import('./components/HeavyChart'));
+
+// ✅ Use Suspense for loading states
+<Suspense fallback={<LoadingSpinner />}>
+  <HeavyChart data={chartData} />
+</Suspense>
+```
+:::
+
+## 4. Data Fetching Optimization
+
+:::warning[Data Fetching Rules]
+- Use React Query for intelligent caching and background updates
+- Implement proper loading and error states
+- Use pagination for large datasets with GENDS DataTable
+- Debounce search inputs and API calls
+:::
+
+:::code-group
+```jsx [React Query with GENDS]
+// ✅ React Query with GENDS components
+import { useQuery } from 'react-query';
+import { DataTable, useDataTable } from 'gends';
+
+const { data, isLoading, error } = useQuery(
+  ['tableData', page, filters],
+  () => fetchTableData(page, filters),
+  { keepPreviousData: true }
+);
+```
+:::
+
+## 5. Rendering Optimization
+
+:::danger[Rendering Anti-patterns]
+Avoid creating objects/arrays in render methods
+:::
+
+:::code-group
+```jsx [Rendering Best Practices]
+// ❌ AVOID: Creates new object on every render
+<Component style={{ margin: 10 }} />
+
+// ✅ CORRECT: Define outside or use useMemo
+const componentStyle = { margin: 10 };
+<Component style={componentStyle} />
+```
+:::
+
+:::tip[Rendering Guidelines]
+- Use keys properly in lists
+- Minimize re-renders with proper dependency arrays
+- Use GENDS virtualization for large lists
+:::
+
+## 6. Memory Management
+
+:::warning[Memory Rules]
+- Clean up subscriptions and timers in useEffect cleanup
+- Avoid memory leaks with proper cleanup
+- Use WeakMap/WeakSet when appropriate
+- Monitor component unmounting in dev tools
+:::
+
+:::code-group
+```jsx [Cleanup Example]
+// ✅ Proper cleanup
+useEffect(() => {
+  const subscription = api.subscribe(callback);
+  return () => subscription.unsubscribe();
+}, []);
+```
+:::
+
+## 7. Image and Asset Optimization
+
+:::info[Asset Strategy]
+- Use appropriate image formats (WebP, AVIF)
+- Implement lazy loading for images
+- Use GENDS icons instead of custom icon fonts/images
+- Optimize bundle assets with Vite's asset processing
+:::
+
+## 8. Build Performance
+
+:::tip[Build Optimization]
+- Use Vite's fast HMR in development
+- Configure proper source maps for debugging
+- Use production builds for performance testing
+- Monitor bundle sizes with rollup-plugin-visualizer
+:::
+
+## 9. Web Vitals Optimization
+
+:::warning[Core Web Vitals]
+- Monitor Core Web Vitals: LCP, FID, CLS
+- Optimize for mobile performance
+- Use GENDS components that are already optimized
+- Implement proper loading strategies
+:::
+
+## 10. Federation Performance
+
+:::info[Federation Strategy]
+- Share heavy dependencies (React, GENDS) as singletons
+- Use proper versioning for federated modules
+- Implement loading strategies for remote modules
+- Monitor inter-module communication overhead
+:::
+
+## 11. Development Performance
+
+:::tip[Development Tools]
+- Use React DevTools Profiler to identify bottlenecks
+- Monitor re-renders and unnecessary updates
+- Use console.time/timeEnd for performance measurement
+- Test performance with production builds locally
+:::
+
+# Performance Optimization Patterns 2024 - React & GENDS
+
+## Performance Philosophy for Impetus Platform
+
+### 1. Performance-First Architecture
+
+Our performance strategy leverages modern React patterns, GENDS components, and TanStack virtualization for optimal user experience.
+
+```
+    ┌─────────────────────────────────┐
+   │     Bundle Optimization         │  ← Code splitting, tree shaking
+  ┌─────────────────────────────────────┐
+ │     Component Optimization        │  ← React.memo, useMemo, useCallback, virtualization
+┌───────────────────────────────────────────┐
+│        Network Optimization              │  ← TanStack Query, preloading
+└─────────────────────────────────────────────┘
+```
+
+## 2. Bundle Optimization Strategy
+
+### Vite Bundle Analysis and Optimization
+```typescript
+// vite.config.ts - Production Optimization
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import { BundleAnalyzerPlugin } from 'rollup-plugin-visualizer';
+
+export default defineConfig({
+  plugins: [
+    react({
+      // Enable React optimizations
+      jsxImportSource: '@emotion/react',
+      babel: {
+        plugins: [
+          ['@babel/plugin-transform-react-jsx', { runtime: 'automatic' }],
+        ],
+      },
+    }),
+    // Bundle analysis
+    BundleAnalyzerPlugin({
+      filename: 'dist/bundle-analysis.html',
+      open: false,
+      gzipSize: true,
+    }),
+  ],
+  build: {
+    target: 'es2022',
+    minify: 'esbuild',
+    cssMinify: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Vendor chunks
+          vendor: ['react', 'react-dom'],
+          router: ['react-router-dom'],
+          state: ['@reduxjs/toolkit', 'react-redux'],
+          query: ['@tanstack/react-query'],
+          ui: ['gends'],
+          
+          // Feature-based chunks
+          'procurement-core': [
+            './src/services/api',
+            './src/utils/common',
+            './src/hooks/common',
+          ],
+          'data-visualization': [
+            './src/components/charts',
+            './src/components/tables',
+          ],
+          'forms': [
+            './src/components/forms',
+            './src/validation',
+          ],
+        },
+        // Optimize chunk file names
+        chunkFileNames: (chunkInfo) => {
+          const facadeModuleId = chunkInfo.facadeModuleId
+            ? chunkInfo.facadeModuleId.split('/').pop()
+            : 'chunk';
+          return `js/${facadeModuleId}-[hash].js`;
+        },
+        assetFileNames: (assetInfo) => {
+          const info = assetInfo.name.split('.');
+          const ext = info[info.length - 1];
+          if (/png|jpe?g|svg|gif|tiff|bmp|ico/i.test(ext)) {
+            return `images/[name]-[hash][extname]`;
+          }
+          if (/woff2?|eot|ttf|otf/i.test(ext)) {
+            return `fonts/[name]-[hash][extname]`;
+          }
+          return `assets/[name]-[hash][extname]`;
+        },
+      },
+    },
+    // Enable source maps for production debugging
+    sourcemap: process.env.NODE_ENV === 'development',
+    // Optimize for production
+    reportCompressedSize: false,
+    chunkSizeWarningLimit: 1600,
+  },
+  // Enable CSS code splitting
+  css: {
+    devSourcemap: true,
+    modules: {
+      localsConvention: 'camelCase',
+    },
+  },
+  // Optimize dependencies
+  optimizeDeps: {
+    include: [
+      'react',
+      'react-dom',
+      'react-router-dom',
+      '@reduxjs/toolkit',
+      'react-redux',
+      '@tanstack/react-query',
+      'gends',
+    ],
+    exclude: ['@vite/client', '@vite/env'],
+  },
+});
+```
+
+### Dynamic Imports and Code Splitting
+```typescript
+// src/components/LazyComponents.tsx
+import { lazy, Suspense } from 'react';
+import { Spinner } from 'gends';
+
+// Lazy load heavy components
+export const OTBAnalytics = lazy(() => 
+  import('./analytics/OTBAnalytics').then(module => ({
+    default: module.OTBAnalytics
+  }))
+);
+
+export const BulkUploadModal = lazy(() =>
+  import('./modals/BulkUploadModal').then(module => ({
+    default: module.BulkUploadModal
+  }))
+);
+
+export const ReportGenerator = lazy(() =>
+  import('./reports/ReportGenerator').then(module => ({
+    default: module.ReportGenerator
+  }))
+);
+
+// HOC for lazy component wrapping
+export const withLazyLoading = <P extends object>(
+  Component: React.LazyExoticComponent<React.ComponentType<P>>,
+  fallback = <div className="flex justify-center p-8"><Spinner /></div>
+) => {
+  return (props: P) => (
+    <Suspense fallback={fallback}>
+      <Component {...props} />
+    </Suspense>
+  );
+};
+
+// Route-based code splitting
+export const lazyRoutes = {
+  OTBListing: lazy(() => import('../pages/OTB/OTBListing')),
+  CreateOTB: lazy(() => import('../pages/OTB/CreateOTB')),
+  POListing: lazy(() => import('../pages/PO/POListing')),
+  CreatePO: lazy(() => import('../pages/PO/CreatePO')),
+  PRAnalytics: lazy(() => import('../pages/PR/Analytics')),
+};
+```
+
+## 3. Component-Level Optimization
+
+### React.memo and Memoization Patterns
+```typescript
+// src/components/optimized/DataTableRow.tsx
+import React, { memo, useMemo } from 'react';
+import { Text, Checkbox, IconButton } from 'gends';
+
+interface DataTableRowProps {
+  data: Record<string, any>;
+  columns: ColumnDef[];
+  isSelected: boolean;
+  onSelectionChange: (id: string, selected: boolean) => void;
+  onEdit: (id: string) => void;
+  onDelete: (id: string) => void;
+}
+
+// Memoized row component to prevent unnecessary re-renders
+export const DataTableRow = memo<DataTableRowProps>(({
+  data,
+  columns,
+  isSelected,
+  onSelectionChange,
+  onEdit,
+  onDelete,
+}) => {
+  // Memoize computed values
+  const computedCells = useMemo(() => {
+    return columns.map(column => {
+      if (column.cell) {
+        return column.cell({ getValue: () => data[column.accessorKey] });
+      }
+      return data[column.accessorKey];
+    });
+  }, [data, columns]);
+
+  // Memoize action handlers
+  const handleSelectionChange = useMemo(() => 
+    (checked: boolean) => onSelectionChange(data.id, checked),
+    [data.id, onSelectionChange]
+  );
+
+  const handleEdit = useMemo(() => 
+    () => onEdit(data.id),
+    [data.id, onEdit]
+  );
+
+  const handleDelete = useMemo(() => 
+    () => onDelete(data.id),
+    [data.id, onDelete]
+  );
+
+  return (
+    <tr className="hover:bg-gray-50">
+      <td className="px-4 py-3">
+        <Checkbox
+          checked={isSelected}
+          onCheckedChange={handleSelectionChange}
+          aria-label={`Select row ${data.id}`}
+        />
+      </td>
+      
+      {computedCells.map((cell, index) => (
+        <td key={columns[index].accessorKey} className="px-4 py-3">
+          {typeof cell === 'string' ? (
+            <Text variant="bodyMedium">{cell}</Text>
+          ) : (
+            cell
+          )}
+        </td>
+      ))}
+      
+      <td className="px-4 py-3">
+        <div className="flex gap-2">
+          <IconButton
+            icon="edit"
+            size="sm"
+            onClick={handleEdit}
+            aria-label="Edit row"
+          />
+          <IconButton
+            icon="delete"
+            size="sm"
+            appearance="danger"
+            onClick={handleDelete}
+            aria-label="Delete row"
+          />
+        </div>
+      </td>
+    </tr>
+  );
+}, (prevProps, nextProps) => {
+  // Custom comparison for memo
+  return (
+    prevProps.isSelected === nextProps.isSelected &&
+    prevProps.data.id === nextProps.data.id &&
+    prevProps.data.updatedAt === nextProps.data.updatedAt &&
+    prevProps.columns.length === nextProps.columns.length
+  );
+});
+
+DataTableRow.displayName = 'DataTableRow';
+```
+
+### Virtualization with TanStack Table
+```typescript
+// src/components/tables/VirtualizedDataTable.tsx
+// This is example of virtualation using react tanstack virtual  but whenever use need table use gends DataTable only
+import React, { useMemo } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
+import { DataTable } from 'gends';
+import { useDataTable } from '@src/hooks/useDataTable';
+
+interface VirtualizedDataTableProps {
+  data: any[];
+  columns: ColumnDef[];
+  height?: number;
+  estimateSize?: number;
+  enableRowSelection?: boolean;
+  onRowSelectionChange?: (selectedRows: any[]) => void;
+}
+
+export const VirtualizedDataTable: React.FC<VirtualizedDataTableProps> = ({
+  data,
+  columns,
+  height = 500,
+  estimateSize = 52,
+  enableRowSelection = false,
+  onRowSelectionChange,
+}) => {
+  // Set up table with TanStack Table
+  const { table } = useDataTable({
+    data,
+    columns,
+    enableRowSelection,
+    onRowSelectionChange,
+  });
+
+  const { rows } = table.getRowModel();
+
+  // Create parent ref for virtualizer
+  const parentRef = React.useRef<HTMLDivElement>(null);
+
+  // Set up virtualizer
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => estimateSize,
+    overscan: 10, // Render extra items for smooth scrolling
+  });
+
+  // Memoize virtual items
+  const virtualItems = virtualizer.getVirtualItems();
+
+  return (
+    <div className="border border-gray-200 rounded-lg overflow-hidden">
+      {/* Header */}
+      <div className="bg-gray-50 border-b border-gray-200">
+        <div className="grid grid-cols-[auto_1fr_auto] gap-4 px-4 py-3">
+          {enableRowSelection && (
+            <div className="w-6">
+              <input
+                type="checkbox"
+                checked={table.getIsAllRowsSelected()}
+                onChange={table.getToggleAllRowsSelectedHandler()}
+                className="rounded border-gray-300"
+              />
+            </div>
+          )}
+          
+          {table.getHeaderGroups().map(headerGroup => (
+            <div key={headerGroup.id} className="contents">
+              {headerGroup.headers.map(header => (
+                <div
+                  key={header.id}
+                  className="text-left font-medium text-gray-900"
+                >
+                  {header.isPlaceholder ? null : (
+                    header.column.getCanSort() ? (
+                      <button
+                        onClick={header.column.getToggleSortingHandler()}
+                        className="flex items-center gap-2 hover:text-blue-600"
+                      >
+                        {header.renderHeader()}
+                        {header.column.getIsSorted() && (
+                          <span>{header.column.getIsSorted() === 'desc' ? '↓' : '↑'}</span>
+                        )}
+                      </button>
+                    ) : (
+                      header.renderHeader()
+                    )
+                  )}
+                </div>
+              ))}
+            </div>
+          ))}
+          
+          <div className="w-20">Actions</div>
+        </div>
+      </div>
+
+      {/* Virtualized Body */}
+      <div
+        ref={parentRef}
+        className="overflow-auto"
+        style={{ height: `${height}px` }}
+      >
+        <div
+          style={{
+            height: `${virtualizer.getTotalSize()}px`,
+            width: '100%',
+            position: 'relative',
+          }}
+        >
+          {virtualItems.map(virtualItem => {
+            const row = rows[virtualItem.index];
+            return (
+              <div
+                key={row.id}
+                data-index={virtualItem.index}
+                ref={virtualizer.measureElement}
+                className={`absolute top-0 left-0 w-full border-b border-gray-100 hover:bg-gray-50 ${
+                  row.getIsSelected() ? 'bg-blue-50' : ''
+                }`}
+                style={{
+                  transform: `translateY(${virtualItem.start}px)`,
+                }}
+              >
+                <div className="grid grid-cols-[auto_1fr_auto] gap-4 px-4 py-3">
+                  {enableRowSelection && (
+                    <div className="w-6">
+                      <input
+                        type="checkbox"
+                        checked={row.getIsSelected()}
+                        onChange={row.getToggleSelectedHandler()}
+                        className="rounded border-gray-300"
+                      />
+                    </div>
+                  )}
+                  
+                  {row.getVisibleCells().map(cell => (
+                    <div key={cell.id} className="min-w-0">
+                      {cell.renderCell()}
+                    </div>
+                  ))}
+                  
+                  <div className="w-20">
+                    {/* Row actions */}
+                    <div className="flex gap-1">
+                      <IconButton size="sm" icon="edit" />
+                      <IconButton size="sm" icon="delete" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="bg-gray-50 border-t border-gray-200 px-4 py-3">
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-gray-600">
+            Showing {virtualItems.length} of {rows.length} rows
+          </span>
+          {enableRowSelection && (
+            <span className="text-sm text-gray-600">
+              {table.getSelectedRowModel().rows.length} selected
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+```
+
+## 4. State Management Optimization
+
+### Optimized Redux Selectors
+```typescript
+// src/store/selectors/optimized.ts
+import { createSelector, createSelectorCreator, lruMemoize } from '@reduxjs/toolkit';
+import type { RootState } from '@src/store';
+
+// Create LRU memoized selector for better performance
+const createLRUSelector = createSelectorCreator(lruMemoize, {
+  maxSize: 50, // Cache up to 50 different selector results
+});
+
+// Basic selectors
+const selectOTBItems = (state: RootState) => state.otb.items;
+const selectOTBFilters = (state: RootState) => state.otb.filters;
+const selectOTBSearchTerm = (state: RootState) => state.otb.searchTerm;
+
+// Memoized filtered selector
+export const selectFilteredOTBItems = createLRUSelector(
+  [selectOTBItems, selectOTBFilters, selectOTBSearchTerm],
+  (items, filters, searchTerm) => {
+    let filtered = items;
+
+    // Apply search filter
+    if (searchTerm) {
+      const searchLower = searchTerm.toLowerCase();
+      filtered = filtered.filter(item =>
+        item.name.toLowerCase().includes(searchLower) ||
+        item.description.toLowerCase().includes(searchLower)
+      );
+    }
+
+    // Apply status filter
+    if (filters.status && filters.status !== 'all') {
+      filtered = filtered.filter(item => item.status === filters.status);
+    }
+
+    // Apply date range filter
+    if (filters.dateRange?.start && filters.dateRange?.end) {
+      filtered = filtered.filter(item => {
+        const itemDate = new Date(item.createdAt);
+        return itemDate >= filters.dateRange.start && itemDate <= filters.dateRange.end;
+      });
+    }
+
+    // Apply sorting
+    if (filters.sortBy) {
+      filtered = [...filtered].sort((a, b) => {
+        const aVal = a[filters.sortBy];
+        const bVal = b[filters.sortBy];
+        
+        if (filters.sortOrder === 'desc') {
+          return bVal > aVal ? 1 : -1;
+        }
+        return aVal > bVal ? 1 : -1;
+      });
+    }
+
+    return filtered;
+  }
+);
+
+// Pagination selector
+export const selectPaginatedOTBItems = createSelector(
+  [selectFilteredOTBItems, (state: RootState) => state.otb.pagination],
+  (items, pagination) => {
+    const start = (pagination.currentPage - 1) * pagination.pageSize;
+    const end = start + pagination.pageSize;
+    
+    return {
+      items: items.slice(start, end),
+      totalItems: items.length,
+      totalPages: Math.ceil(items.length / pagination.pageSize),
+      currentPage: pagination.currentPage,
+      pageSize: pagination.pageSize,
+    };
+  }
+);
+
+// Statistics selector
+export const selectOTBStatistics = createSelector(
+  [selectOTBItems],
+  (items) => {
+    const total = items.length;
+    const active = items.filter(item => item.status === 'active').length;
+    const expired = items.filter(item => item.status === 'expired').length;
+    const totalBudget = items.reduce((sum, item) => sum + item.budgetAllocated, 0);
+    const usedBudget = items.reduce((sum, item) => sum + item.budgetUsed, 0);
+    
+    return {
+      total,
+      active,
+      expired,
+      totalBudget,
+      usedBudget,
+      availableBudget: totalBudget - usedBudget,
+      utilizationRate: totalBudget > 0 ? (usedBudget / totalBudget) * 100 : 0,
+    };
+  }
+);
+```
+
+### React Query Optimization
+```typescript
+// src/hooks/optimized/useOptimizedOTBList.ts
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMemo } from 'react';
+import { getOTBList } from '@src/services/otbService';
+
+interface UseOptimizedOTBListOptions {
+  filters?: Record<string, any>;
+  enabled?: boolean;
+  suspense?: boolean;
+}
+
+export const useOptimizedOTBList = (options: UseOptimizedOTBListOptions = {}) => {
+  const { filters, enabled = true, suspense = false } = options;
+  const queryClient = useQueryClient();
+
+  // Memoize query key to prevent unnecessary refetches
+  const queryKey = useMemo(() => ['otb-list', filters], [filters]);
+
+  const query = useQuery({
+    queryKey,
+    queryFn: () => getOTBList(filters),
+    enabled,
+    suspense,
+    
+    // Optimization settings
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    cacheTime: 30 * 60 * 1000, // 30 minutes
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    
+    // Retry configuration
+    retry: (failureCount, error) => {
+      if (error.status === 404 || error.status === 403) {
+        return false;
+      }
+      return failureCount < 3;
+    },
+    
+    // Background refetch optimization
+    refetchInterval: 10 * 60 * 1000, // 10 minutes
+    refetchIntervalInBackground: false,
+    
+    // Select only needed data
+    select: (data) => ({
+      items: data.items,
+      pagination: data.pagination,
+      lastUpdated: data.lastUpdated,
+    }),
+
+    // Optimistic updates preparation
+    onSuccess: (data) => {
+      // Prefetch related data
+      data.items.forEach(item => {
+        queryClient.setQueryData(['otb-item', item.id], item);
+      });
+    },
+  });
+
+  // Prefetch next page
+  const prefetchNextPage = useMemo(() => {
+    if (!query.data?.pagination?.hasNextPage) return undefined;
+    
+    return () => {
+      const nextPageFilters = {
+        ...filters,
+        page: (filters?.page || 1) + 1,
+      };
+      
+      queryClient.prefetchQuery({
+        queryKey: ['otb-list', nextPageFilters],
+        queryFn: () => getOTBList(nextPageFilters),
+        staleTime: 5 * 60 * 1000,
+      });
+    };
+  }, [query.data?.pagination?.hasNextPage, filters, queryClient]);
+
+  return {
+    ...query,
+    prefetchNextPage,
+  };
+};
+```
+
+## 5. Image and Asset Optimization
+
+### Optimized Image Loading
+```typescript
+// src/components/optimized/OptimizedImage.tsx
+import React, { useState, useRef, useEffect } from 'react';
+import { Spinner } from 'gends';
+
+interface OptimizedImageProps {
+  src: string;
+  alt: string;
+  width?: number;
+  height?: number;
+  className?: string;
+  lazy?: boolean;
+  placeholder?: string;
+  fallback?: string;
+  quality?: number;
+}
+
+export const OptimizedImage: React.FC<OptimizedImageProps> = ({
+  src,
+  alt,
+  width,
+  height,
+  className = '',
+  lazy = true,
+  placeholder,
+  fallback = '/images/placeholder.svg',
+  quality = 80,
+}) => {
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [error, setError] = useState(false);
+  const [inView, setInView] = useState(!lazy);
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  // Intersection Observer for lazy loading
+  useEffect(() => {
+    if (!lazy || inView) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setInView(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '50px' } // Load images 50px before they come into view
+    );
+
+    if (imgRef.current) {
+      observer.observe(imgRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, [lazy, inView]);
+
+  // Generate optimized image URL
+  const optimizedSrc = useMemo(() => {
+    if (!inView) return placeholder || '';
+    
+    // Add optimization parameters (assuming your image service supports them)
+    const url = new URL(src, window.location.origin);
+    if (width) url.searchParams.set('w', width.toString());
+    if (height) url.searchParams.set('h', height.toString());
+    if (quality) url.searchParams.set('q', quality.toString());
+    url.searchParams.set('f', 'webp'); // Prefer WebP format
+    
+    return url.toString();
+  }, [src, width, height, quality, inView, placeholder]);
+
+  const handleLoad = () => {
+    setIsLoaded(true);
+    setError(false);
+  };
+
+  const handleError = () => {
+    setError(true);
+    setIsLoaded(false);
+  };
+
+  return (
+    <div className={`relative ${className}`} ref={imgRef}>
+      {/* Loading spinner */}
+      {!isLoaded && !error && inView && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
+          <Spinner size="sm" />
+        </div>
+      )}
+
+      {/* Main image */}
+      {inView && (
+        <img
+          src={error ? fallback : optimizedSrc}
+          alt={alt}
+          width={width}
+          height={height}
+          className={`transition-opacity duration-300 ${
+            isLoaded ? 'opacity-100' : 'opacity-0'
+          }`}
+          onLoad={handleLoad}
+          onError={handleError}
+          loading={lazy ? 'lazy' : 'eager'}
+          decoding="async"
+        />
+      )}
+
+      {/* Placeholder for lazy loading */}
+      {!inView && placeholder && (
+        <img
+          src={placeholder}
+          alt=""
+          width={width}
+          height={height}
+          className="opacity-60"
+        />
+      )}
+    </div>
+  );
+};
+```
+
+## 6. Network Performance Optimization
+
+### Service Worker for Caching
+```typescript
+// public/sw.js
+const CACHE_NAME = 'impetus-v1.0.0';
+const STATIC_CACHE_URLS = [
+  '/',
+  '/manifest.json',
+  '/static/css/main.css',
+  '/static/js/main.js',
+];
+
+const API_CACHE_URLS = [
+  '/api/otb',
+  '/api/po',
+  '/api/pr',
+];
+
+// Install event
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then(cache => cache.addAll(STATIC_CACHE_URLS))
+      .then(() => self.skipWaiting())
+  );
+});
+
+// Activate event
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys()
+      .then(cacheNames => {
+        return Promise.all(
+          cacheNames
+            .filter(cacheName => cacheName !== CACHE_NAME)
+            .map(cacheName => caches.delete(cacheName))
+        );
+      })
+      .then(() => self.clients.claim())
+  );
+});
+
+// Fetch event with stale-while-revalidate strategy
+self.addEventListener('fetch', (event) => {
+  const { request } = event;
+  const url = new URL(request.url);
+
+  // Handle API requests
+  if (url.pathname.startsWith('/api/')) {
+    event.respondWith(
+      caches.open(CACHE_NAME)
+        .then(cache => {
+          return cache.match(request)
+            .then(cachedResponse => {
+              const fetchPromise = fetch(request)
+                .then(networkResponse => {
+                  // Update cache with fresh data
+                  cache.put(request, networkResponse.clone());
+                  return networkResponse;
+                });
+
+              // Return cached version immediately, fetch in background
+              return cachedResponse || fetchPromise;
+            });
+        })
+    );
+    return;
+  }
+
+  // Handle static assets
+  event.respondWith(
+    caches.match(request)
+      .then(response => {
+        return response || fetch(request);
+      })
+  );
+});
+```
+
+### Resource Preloading Strategy
+```typescript
+// src/utils/resourcePreloader.ts
+interface PreloadResource {
+  href: string;
+  as: 'script' | 'style' | 'image' | 'font' | 'fetch';
+  crossorigin?: string;
+  type?: string;
+  media?: string;
+}
+
+class ResourcePreloader {
+  private preloadedResources = new Set<string>();
+
+  preload(resource: PreloadResource): void {
+    if (this.preloadedResources.has(resource.href)) {
+      return;
+    }
+
+    const link = document.createElement('link');
+    link.rel = 'preload';
+    link.href = resource.href;
+    link.as = resource.as;
+    
+    if (resource.crossorigin) {
+      link.crossOrigin = resource.crossorigin;
+    }
+    
+    if (resource.type) {
+      link.type = resource.type;
+    }
+    
+    if (resource.media) {
+      link.media = resource.media;
+    }
+
+    document.head.appendChild(link);
+    this.preloadedResources.add(resource.href);
+  }
+
+  preloadCriticalResources(): void {
+    // Preload critical fonts
+    this.preload({
+      href: '/fonts/inter-var.woff2',
+      as: 'font',
+      type: 'font/woff2',
+      crossorigin: 'anonymous',
+    });
+
+    // Preload critical images
+    this.preload({
+      href: '/images/logo.svg',
+      as: 'image',
+    });
+
+    // Preload critical API endpoints
+    this.preload({
+      href: '/api/user/profile',
+      as: 'fetch',
+      crossorigin: 'anonymous',
+    });
+  }
+
+  prefetchRoute(route: string): void {
+    this.preload({
+      href: route,
+      as: 'fetch',
+    });
+  }
+
+  prefetchImages(imageUrls: string[]): void {
+    imageUrls.forEach(url => {
+      this.preload({
+        href: url,
+        as: 'image',
+      });
+    });
+  }
+}
+
+export const resourcePreloader = new ResourcePreloader();
+```
+
+## 7. Monitoring and Performance Tracking
+
+### Performance Monitoring Hook
+```typescript
+// src/hooks/usePerformanceMonitor.ts
+import { useEffect, useRef } from 'react';
+
+interface PerformanceMetrics {
+  componentMountTime: number;
+  renderCount: number;
+  lastRenderTime: number;
+}
+
+export const usePerformanceMonitor = (componentName: string) => {
+  const metricsRef = useRef<PerformanceMetrics>({
+    componentMountTime: 0,
+    renderCount: 0,
+    lastRenderTime: 0,
+  });
+
+  const renderStartTime = useRef(performance.now());
+
+  useEffect(() => {
+    // Record mount time
+    metricsRef.current.componentMountTime = performance.now();
+    
+    return () => {
+      // Log metrics on unmount
+      console.log(`[Performance] ${componentName}:`, metricsRef.current);
+    };
+  }, [componentName]);
+
+  useEffect(() => {
+    // Track render time
+    const renderTime = performance.now() - renderStartTime.current;
+    metricsRef.current.renderCount++;
+    metricsRef.current.lastRenderTime = renderTime;
+
+    // Warn about slow renders
+    if (renderTime > 16) { // > 60fps threshold
+      console.warn(`[Performance] Slow render in ${componentName}: ${renderTime.toFixed(2)}ms`);
+    }
+
+    // Reset start time for next render
+    renderStartTime.current = performance.now();
+  });
+
+  return metricsRef.current;
+};
+```
+
+### Bundle Analysis Utility
+```typescript
+// src/utils/bundleAnalyzer.ts
+export const analyzeBundlePerformance = () => {
+  if ('performance' in window && 'getEntriesByType' in performance) {
+    const resources = performance.getEntriesByType('resource') as PerformanceResourceTiming[];
+    
+    const analysis = {
+      totalResources: resources.length,
+      totalSize: 0,
+      largeResources: [] as Array<{ name: string; size: number; duration: number }>,
+      slowResources: [] as Array<{ name: string; duration: number }>,
+      cacheHits: 0,
+    };
+
+    resources.forEach(resource => {
+      const size = resource.transferSize || 0;
+      const duration = resource.responseEnd - resource.requestStart;
+      
+      analysis.totalSize += size;
+      
+      // Flag large resources (> 500KB)
+      if (size > 500000) {
+        analysis.largeResources.push({
+          name: resource.name,
+          size,
+          duration,
+        });
+      }
+      
+      // Flag slow resources (> 2s)
+      if (duration > 2000) {
+        analysis.slowResources.push({
+          name: resource.name,
+          duration,
+        });
+      }
+      
+      // Count cache hits
+      if (resource.transferSize === 0 && resource.decodedBodySize > 0) {
+        analysis.cacheHits++;
+      }
+    });
+
+    console.log('Bundle Performance Analysis:', analysis);
+    return analysis;
+  }
+};
+```
+
+## 8. Best Practices Summary
+
+### Performance Optimization Checklist
+
+#### Bundle Optimization
+- [ ] Code splitting by routes and features
+- [ ] Tree shaking enabled
+- [ ] Unused dependencies removed
+- [ ] Bundle analysis performed regularly
+- [ ] Critical CSS inlined
+- [ ] Non-critical CSS lazy loaded
+
+#### Component Optimization
+- [ ] React.memo used for expensive components
+- [ ] useMemo/useCallback used appropriately
+- [ ] Large lists virtualized with TanStack Virtual
+- [ ] Expensive calculations memoized
+- [ ] Component lazy loading implemented
+
+#### State Management Optimization
+- [ ] Selectors memoized with reselect
+- [ ] Redux store properly normalized
+- [ ] React Query cache optimized
+- [ ] Unnecessary re-renders eliminated
+- [ ] State updates batched where possible
+
+#### Network Optimization
+- [ ] API responses cached appropriately
+- [ ] Images optimized and lazy loaded
+- [ ] Critical resources preloaded
+- [ ] Service worker implemented
+- [ ] HTTP/2 server push utilized
+
+#### Monitoring & Metrics
+- [ ] Core Web Vitals monitored
+- [ ] Component render times tracked
+- [ ] Bundle size monitored
+- [ ] API performance tracked
+- [ ] User experience metrics collected
+
+### Performance Targets
+
+- **First Contentful Paint (FCP)**: < 1.8s
+- **Largest Contentful Paint (LCP)**: < 2.5s
+- **First Input Delay (FID)**: < 100ms
+- **Cumulative Layout Shift (CLS)**: < 0.1
+- **Time to Interactive (TTI)**: < 3.8s
+- **Bundle Size**: < 250KB gzipped
+- **API Response Time**: < 200ms (95th percentile)
+
+This comprehensive performance optimization strategy ensures the Impetus procurement platform delivers exceptional user experience across all devices and network conditions.
+
+# Table and Virtualization Guidelines
+
+## Virtualization Implementation
+While TanStack Virtual is available for implementing virtualization in custom list or grid components, it should be used selectively and only for specific use cases that require handling large datasets with custom rendering requirements.
+
+## Preferred Table Component
+For standard table implementations, always use the GENDS `DataTable` component as the default choice. The GENDS `DataTable` comes with built-in features like:
+- Pagination
+- Sorting
+- Filtering
+- Responsive design
+- Accessibility support
+- Consistent styling with our design system
+
+## When to Use What
+- **GENDS DataTable**: Use for most table implementations, especially when you need standard table functionality
+- **TanStack Virtual**: Only use when you have a specific requirement for custom virtualized lists that cannot be handled by DataTable
+
+This ensures consistency across the application while maintaining optimal performance where needed.

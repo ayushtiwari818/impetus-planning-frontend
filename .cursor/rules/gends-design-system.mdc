@@ -1,0 +1,852 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# GENDS Design System - Comprehensive Component Guide
+
+**GENDS** is our PRIMARY design system built on **TanStack virtualization**, **Radix UI**, and **ShadCN/CN** foundations, providing built-in accessibility and modern React patterns. **NEVER use @gofynd/nitrozen-react** - always use GENDS components.
+
+## Core Architecture
+
+GENDS leverages:
+
+- **GENDS DataTable** (internally uses TanStack Table) for all data grids
+- **TanStack Virtual** for virtualization when needed
+- **Radix UI** primitives for accessibility
+- **ShadCN/CN** for base styling patterns
+- Built-in **ARIA** compliance and keyboard navigation
+- **TypeScript** strict typing throughout
+
+## Critical Import Patterns
+
+Always import from `gends` (NOT @gofynd/nitrozen-react):
+
+```typescript
+// ✅ CORRECT - Always use GENDS
+import {
+  DataTable,
+  Button,
+  Modal,
+  TitleBar,
+  Text,
+  IconButton,
+  Dropdown,
+  Checkbox,
+  Input,
+  DatePicker,
+  FileUpload,
+  InputLabel,
+  FilterPill,
+  BadgeTab,
+  Pagination,
+} from "gends";
+
+// ❌ NEVER USE - Completely forbidden
+import { Button } from "@gofynd/nitrozen-react";
+```
+
+## GENDS DataTable Component
+
+### Production-Ready DataTable Example
+
+```typescript
+// src/components/tables/OTBDataTable.tsx
+import React, { useMemo, useState, useCallback } from "react";
+import {
+  DataTable,
+  Button,
+  IconButton,
+  Text,
+  Checkbox,
+  Pagination,
+  BadgeTab,
+  FilterPill,
+  Input,
+  Dropdown,
+} from "gends";
+import { IcEdit, IcDelete, IcDownload, IcSearch } from "gends";
+
+// Example data type
+type OTBItem = {
+  id: string;
+  name: string;
+  budgetAllocated: number;
+  budgetUsed: number;
+  status: "active" | "expired" | "exhausted";
+  category: string;
+  createdAt: string;
+};
+
+interface OTBDataTableProps {
+  data: OTBItem[];
+  loading?: boolean;
+  onEdit: (id: string) => void;
+  onDelete: (id: string) => void;
+  onExport: (selectedIds: string[]) => void;
+}
+
+export const OTBDataTable: React.FC<OTBDataTableProps> = ({
+  data,
+  loading = false,
+  onEdit,
+  onDelete,
+  onExport,
+}) => {
+  // Table state
+  const [selectedRowIds, setSelectedRowIds] = useState<string[]>([]);
+  const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 25 });
+  const [globalFilter, setGlobalFilter] = useState("");
+  const [columnFilters, setColumnFilters] = useState<any[]>([]);
+  const [sorting, setSorting] = useState<any[]>([]);
+
+  // Memoize columns for performance
+  const columns = useMemo(
+    () => [
+      {
+        accessorKey: "name",
+        header: "OTB Name",
+        cell: ({ getValue }: any) => (
+          <Text variant="bodyMedium" className="font-medium">
+            {getValue()}
+          </Text>
+        ),
+        enableSorting: true,
+        enableColumnFilter: true,
+      },
+      {
+        accessorKey: "budgetAllocated",
+        header: "Budget Allocated",
+        cell: ({ getValue }: any) => (
+          <Text variant="bodyMedium">₹{getValue().toLocaleString()}</Text>
+        ),
+        enableSorting: true,
+      },
+      {
+        accessorKey: "budgetUsed",
+        header: "Budget Used",
+        cell: ({ getValue, row }: any) => {
+          const used = getValue();
+          const allocated = row.original.budgetAllocated;
+          const percentage = (used / allocated) * 100;
+          return (
+            <div className="space-y-1">
+              <Text variant="bodyMedium">₹{used.toLocaleString()}</Text>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div
+                  className={`h-2 rounded-full ${
+                    percentage > 90
+                      ? "bg-red-500"
+                      : percentage > 70
+                      ? "bg-yellow-500"
+                      : "bg-green-500"
+                  }`}
+                  style={{ width: `${Math.min(percentage, 100)}%` }}
+                />
+              </div>
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: "status",
+        header: "Status",
+        cell: ({ getValue }: any) => {
+          const status = getValue();
+          const statusConfig = {
+            active: { color: "green", label: "Active" },
+            expired: { color: "red", label: "Expired" },
+            exhausted: { color: "orange", label: "Exhausted" },
+          };
+          return (
+            <BadgeTab appearance={statusConfig[status].color} size="sm">
+              {statusConfig[status].label}
+            </BadgeTab>
+          );
+        },
+        enableColumnFilter: true,
+        filterFn: "equals",
+      },
+      {
+        accessorKey: "category",
+        header: "Category",
+        cell: ({ getValue }: any) => (
+          <Text variant="bodyMedium">{getValue()}</Text>
+        ),
+        enableColumnFilter: true,
+      },
+      {
+        accessorKey: "createdAt",
+        header: "Created Date",
+        cell: ({ getValue }: any) => (
+          <Text variant="bodySmall" className="text-gray-600">
+            {new Date(getValue()).toLocaleDateString()}
+          </Text>
+        ),
+        enableSorting: true,
+      },
+      {
+        id: "actions",
+        header: "Actions",
+        cell: ({ row }: any) => (
+          <div className="flex gap-2">
+            <IconButton
+              icon={<IcEdit />}
+              size="sm"
+              appearance="secondary"
+              onClick={() => onEdit(row.original.id)}
+              aria-label="Edit OTB"
+            />
+            <IconButton
+              icon={<IcDelete />}
+              size="sm"
+              appearance="danger"
+              onClick={() => onDelete(row.original.id)}
+              aria-label="Delete OTB"
+            />
+          </div>
+        ),
+        enableSorting: false,
+      },
+    ],
+    [onEdit, onDelete]
+  );
+
+  // Handle row selection
+  const handleRowSelectionChange = useCallback((selectedRows: any[]) => {
+    setSelectedRowIds(selectedRows.map((row) => row.id));
+  }, []);
+
+  // Handle export
+  const handleExport = useCallback(() => {
+    onExport(selectedRowIds);
+  }, [onExport, selectedRowIds]);
+
+  // Pagination info
+  const totalPages = Math.ceil(data.length / pagination.pageSize);
+
+  return (
+    <div className="space-y-4">
+      {/* Table Actions */}
+      <div className="flex justify-between items-center">
+        <Text variant="headingMedium">Open to Buy Management</Text>
+        <div className="flex gap-2">
+          <Button
+            appearance="secondary"
+            prefixIcon={<IcDownload />}
+            onClick={handleExport}
+            disabled={selectedRowIds.length === 0}
+          >
+            Export Selected
+          </Button>
+          <Button appearance="primary">Create New OTB</Button>
+        </div>
+      </div>
+
+      {/* Filters and Search */}
+      <div className="flex gap-4 mb-2">
+        <Input
+          placeholder="Search OTBs..."
+          value={globalFilter}
+          onChange={setGlobalFilter}
+          prefixIcon={<IcSearch />}
+          className="flex-1"
+        />
+        <Dropdown
+          placeholder="Filter by status"
+          value={columnFilters.find((f) => f.id === "status")?.value || ""}
+          onChange={(val) =>
+            setColumnFilters((prev) => [
+              ...prev.filter((f) => f.id !== "status"),
+              { id: "status", value: val },
+            ])
+          }
+          options={[
+            { value: "", label: "All" },
+            { value: "active", label: "Active" },
+            { value: "expired", label: "Expired" },
+            { value: "exhausted", label: "Exhausted" },
+          ]}
+          clearable
+        />
+      </div>
+
+      {/* GENDS DataTable */}
+      <DataTable
+        data={data}
+        columns={columns}
+        loading={loading}
+        enableRowSelection={true}
+        enableMultiRowSelection={true}
+        onRowSelectionChange={handleRowSelectionChange}
+        selectedRowIds={selectedRowIds}
+        enablePagination={true}
+        pageSize={pagination.pageSize}
+        pageIndex={pagination.pageIndex}
+        onPaginationChange={setPagination}
+        enableSorting={true}
+        sorting={sorting}
+        onSortingChange={setSorting}
+        enableColumnFilters={true}
+        columnFilters={columnFilters}
+        onColumnFiltersChange={setColumnFilters}
+        enableGlobalFilter={true}
+        globalFilter={globalFilter}
+        onGlobalFilterChange={setGlobalFilter}
+        globalFilterPlaceholder="Search OTBs..."
+        enableVirtualization={data.length > 1000}
+        estimateRowHeight={60}
+        className="border border-gray-200 rounded-lg"
+        emptyStateMessage="No OTB records found"
+        emptyStateDescription="Create your first Open to Buy to get started"
+      />
+
+      {/* Pagination */}
+      <Pagination
+        currentPage={pagination.pageIndex + 1}
+        totalPages={totalPages}
+        onPageChange={(page) =>
+          setPagination((p) => ({ ...p, pageIndex: page - 1 }))
+        }
+        showPageSizeSelector
+        pageSizeOptions={[10, 25, 50, 100]}
+        pageSize={pagination.pageSize}
+        onPageSizeChange={(size) =>
+          setPagination({ pageIndex: 0, pageSize: size })
+        }
+        totalItems={data.length}
+      />
+    </div>
+  );
+};
+```
+
+### Advanced DataTable with Custom Cells
+
+```typescript
+// src/components/tables/PODataTable.tsx
+import React, { useMemo } from "react";
+import { DataTable, Button, Text, Dropdown, Modal } from "gends";
+import { IcMoreVertical, IcEye, IcEdit, IcDownload } from "@gofynd/gends-icons";
+
+export const PODataTable: React.FC<PODataTableProps> = ({
+  data,
+  onStatusChange,
+}) => {
+  const columns = useMemo(
+    () => [
+      {
+        accessorKey: "poNumber",
+        header: "PO Number",
+        cell: ({ getValue, row }: any) => (
+          <Button
+            appearance="link"
+            onClick={() => window.open(`/po/${row.original.id}`, "_blank")}
+          >
+            {getValue()}
+          </Button>
+        ),
+        enableSorting: true,
+      },
+      {
+        accessorKey: "vendor",
+        header: "Vendor",
+        cell: ({ getValue }: any) => {
+          const vendor = getValue();
+          return (
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
+                <Text variant="bodySmall" className="font-medium">
+                  {vendor.name.charAt(0).toUpperCase()}
+                </Text>
+              </div>
+              <div>
+                <Text variant="bodyMedium" className="font-medium">
+                  {vendor.name}
+                </Text>
+                <Text variant="bodySmall" className="text-gray-600">
+                  {vendor.email}
+                </Text>
+              </div>
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: "status",
+        header: "Status",
+        cell: ({ getValue, row }: any) => {
+          const status = getValue();
+          const statusOptions = [
+            { value: "draft", label: "Draft" },
+            { value: "sent", label: "Sent" },
+            { value: "acknowledged", label: "Acknowledged" },
+            { value: "fulfilled", label: "Fulfilled" },
+          ];
+
+          return (
+            <Dropdown
+              value={status}
+              options={statusOptions}
+              onChange={(newStatus) =>
+                onStatusChange(row.original.id, newStatus)
+              }
+              size="sm"
+              appearance="secondary"
+            />
+          );
+        },
+        enableColumnFilter: true,
+        filterFn: "equals",
+      },
+      {
+        accessorKey: "totalAmount",
+        header: "Total Amount",
+        cell: ({ getValue }: any) => (
+          <Text variant="bodyMedium" className="font-medium">
+            ₹{getValue().toLocaleString()}
+          </Text>
+        ),
+        enableSorting: true,
+      },
+      {
+        id: "actions",
+        header: "",
+        cell: ({ row }: any) => {
+          const actionOptions = [
+            {
+              label: "View Details",
+              icon: <IcEye />,
+              onClick: () => window.open(`/po/${row.original.id}`, "_blank"),
+            },
+            {
+              label: "Edit PO",
+              icon: <IcEdit />,
+              onClick: () =>
+                window.open(`/po/${row.original.id}/edit`, "_blank"),
+            },
+            {
+              label: "Download PDF",
+              icon: <IcDownload />,
+              onClick: () => downloadPO(row.original.id),
+            },
+          ];
+
+          return (
+            <Dropdown
+              trigger={
+                <IconButton
+                  icon={<IcMoreVertical />}
+                  size="sm"
+                  appearance="ghost"
+                  aria-label="More actions"
+                />
+              }
+              options={actionOptions}
+              placement="bottom-end"
+            />
+          );
+        },
+      },
+    ],
+    [onStatusChange]
+  );
+
+  return (
+    <DataTable
+      data={data}
+      columns={columns}
+      enableRowSelection={true}
+      enablePagination={true}
+      enableSorting={true}
+      enableColumnFilters={true}
+      enableGlobalFilter={true}
+      // Enable virtualization for large datasets
+      enableVirtualization={data.length > 500}
+      estimateRowHeight={72}
+      // Custom styling
+      className="border-0"
+      headerClassName="bg-gray-50"
+      // Performance optimization
+      getRowId={(row) => row.id}
+      enableRowVirtualization={data.length > 1000}
+    />
+  );
+};
+```
+
+## TanStack Virtual Integration (When Needed)
+
+Use TanStack Virtual only for custom virtualization scenarios outside of DataTable:
+
+```typescript
+// src/components/virtualized/VirtualizedList.tsx
+import React from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { Text, Card } from "gends";
+
+interface VirtualizedListProps {
+  items: any[];
+  renderItem: (item: any, index: number) => React.ReactNode;
+  estimateSize?: number;
+  height?: number;
+}
+
+export const VirtualizedList: React.FC<VirtualizedListProps> = ({
+  items,
+  renderItem,
+  estimateSize = 60,
+  height = 400,
+}) => {
+  const parentRef = React.useRef<HTMLDivElement>(null);
+
+  const virtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => estimateSize,
+    overscan: 5,
+  });
+
+  return (
+    <div
+      ref={parentRef}
+      className="overflow-auto border border-gray-200 rounded-lg"
+      style={{ height: `${height}px` }}
+    >
+      <div
+        style={{
+          height: `${virtualizer.getTotalSize()}px`,
+          width: "100%",
+          position: "relative",
+        }}
+      >
+        {virtualizer.getVirtualItems().map((virtualItem) => (
+          <div
+            key={virtualItem.key}
+            data-index={virtualItem.index}
+            ref={virtualizer.measureElement}
+            className="absolute top-0 left-0 w-full"
+            style={{
+              transform: `translateY(${virtualItem.start}px)`,
+            }}
+          >
+            {renderItem(items[virtualItem.index], virtualItem.index)}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// Usage example
+const OTBVirtualList = () => {
+  const otbItems = []; // Your OTB data
+
+  return (
+    <VirtualizedList
+      items={otbItems}
+      estimateSize={80}
+      height={500}
+      renderItem={(item, index) => (
+        <Card className="m-2 p-4">
+          <Text variant="bodyMedium">{item.name}</Text>
+          <Text variant="bodySmall" className="text-gray-600">
+            Budget: ₹{item.budgetAllocated.toLocaleString()}
+          </Text>
+        </Card>
+      )}
+    />
+  );
+};
+```
+
+## Core GENDS Components
+
+### Button Component
+
+```typescript
+// All button variants and usage patterns
+<Button appearance="primary" size="lg">Primary Action</Button>
+<Button appearance="secondary" size="md">Secondary Action</Button>
+<Button appearance="danger" size="sm">Delete</Button>
+<Button appearance="ghost" disabled>Disabled</Button>
+
+// With icons
+<Button
+  appearance="primary"
+  prefixIcon={<IcPlus />}
+  onClick={handleCreate}
+>
+  Create New
+</Button>
+
+<Button
+  appearance="secondary"
+  suffixIcon={<IcExternalLink />}
+  onClick={handleExport}
+>
+  Export Data
+</Button>
+
+// Loading state
+<Button appearance="primary" loading>
+  Processing...
+</Button>
+```
+
+### Modal Component
+
+```typescript
+// Basic modal usage
+const [isOpen, setIsOpen] = useState(false);
+
+<Modal
+  isOpen={isOpen}
+  onClose={() => setIsOpen(false)}
+  title="Create New OTB"
+  size="lg"
+  closeOnOverlayClick={false}
+>
+  <div className="space-y-4">
+    <Input label="OTB Name" placeholder="Enter OTB name" required />
+    <div className="flex justify-end gap-2 pt-4">
+      <Button appearance="secondary" onClick={() => setIsOpen(false)}>
+        Cancel
+      </Button>
+      <Button appearance="primary">Create OTB</Button>
+    </div>
+  </div>
+</Modal>;
+```
+
+### Form Components
+
+```typescript
+// Input with validation
+<Input
+  label="Budget Amount"
+  type="number"
+  placeholder="Enter amount"
+  value={budgetAmount}
+  onChange={setBudgetAmount}
+  error={errors.budgetAmount}
+  helperText="Enter the total budget allocation"
+  required
+  prefixIcon={<IcCurrency />}
+/>
+
+// DatePicker
+<DatePicker
+  label="Start Date"
+  value={startDate}
+  onChange={setStartDate}
+  placeholder="Select start date"
+  minDate={new Date()}
+  required
+/>
+
+// Dropdown
+<Dropdown
+  label="Category"
+  value={selectedCategory}
+  onChange={setSelectedCategory}
+  options={categoryOptions}
+  placeholder="Select category"
+  searchable
+  clearable
+  required
+/>
+
+// FileUpload
+<FileUpload
+  label="Upload Documents"
+  accept=".pdf,.doc,.docx"
+  multiple
+  maxSize={10 * 1024 * 1024} // 10MB
+  onUpload={handleFileUpload}
+  helperText="Upload supporting documents (PDF, DOC, DOCX)"
+/>
+```
+
+### Navigation Components
+
+```typescript
+// TitleBar for page headers
+<TitleBar
+  title="Open to Buy Management"
+  subtitle="Manage your budget allocations and spending"
+  breadcrumbs={[
+    { label: 'Dashboard', href: '/dashboard' },
+    { label: 'OTB', href: '/otb' },
+    { label: 'Management', href: '/otb/management' },
+  ]}
+  actions={
+    <div className="flex gap-2">
+      <Button appearance="secondary" prefixIcon={<IcDownload />}>
+        Export
+      </Button>
+      <Button appearance="primary" prefixIcon={<IcPlus />}>
+        Create New
+      </Button>
+    </div>
+  }
+/>
+
+// Pagination
+<Pagination
+  currentPage={currentPage}
+  totalPages={totalPages}
+  onPageChange={setCurrentPage}
+  showPageSizeSelector
+  pageSizeOptions={[10, 25, 50, 100]}
+  pageSize={pageSize}
+  onPageSizeChange={setPageSize}
+  totalItems={totalItems}
+/>
+```
+
+### Filter and Search Components
+
+```typescript
+// FilterPill for active filters
+<div className="flex flex-wrap gap-2">
+  {activeFilters.map((filter) => (
+    <FilterPill
+      key={filter.id}
+      label={filter.label}
+      value={filter.value}
+      onRemove={() => removeFilter(filter.id)}
+      color="blue"
+    />
+  ))}
+</div>
+
+// Search with filters
+<div className="flex gap-4 mb-6">
+  <Input
+    placeholder="Search OTBs..."
+    value={searchTerm}
+    onChange={setSearchTerm}
+    prefixIcon={<IcSearch />}
+    className="flex-1"
+  />
+
+  <Dropdown
+    options={}
+    placeholder="Filter by status"
+    value={statusFilter}
+    onChange={setStatusFilter}
+    options={statusOptions}
+    searchable
+  />
+
+  <DatePicker
+    placeholder="Filter by date"
+    selectedDates={dateFilter}
+    onDateChangeHandler={setDateFilter}
+  />
+</div>
+```
+
+## Performance Best Practices
+
+### DataTable Optimization
+
+```typescript
+// ✅ Use GENDS DataTable with built-in optimizations
+<DataTable
+  data={data}
+  columns={columns}
+  // Enable virtualization only for large datasets
+  enableVirtualization={data.length > 1000}
+  // Optimize row rendering
+  getRowId={(row) => row.id}
+  enableRowVirtualization={data.length > 5000}
+  // Memoize columns
+  columns={useMemo(() => columnDefinitions, [dependencies])}
+  // Debounce search
+  globalFilterDebounceMs={300}
+  // Optimize pagination
+  manualPagination={true} // For server-side pagination
+  pageCount={totalPages}
+/>
+```
+
+### Component Memoization
+
+```typescript
+// Memoize expensive GENDS components
+const MemoizedDataTable = React.memo(DataTable);
+const MemoizedModal = React.memo(Modal);
+
+// Use callback optimization
+const handleRowSelection = useCallback(
+  (selectedRows) => {
+    // Handle selection
+  },
+  [dependencies]
+);
+
+const handleStatusChange = useCallback(
+  (id, status) => {
+    // Handle status change
+  },
+  [dependencies]
+);
+```
+
+## Accessibility Guidelines
+
+GENDS components come with built-in accessibility, but ensure proper usage:
+
+```typescript
+// ✅ Proper ARIA labels
+<IconButton
+  icon={<IcEdit />}
+  aria-label="Edit OTB record"
+  onClick={handleEdit}
+/>
+
+// ✅ Form accessibility
+<Input
+  label="Budget Amount"
+  id="budget-amount"
+  aria-describedby="budget-help"
+  required
+  size="s"
+  placeholder="Placeholder"
+/>
+<Text id="budget-help" variant="bodySmall">
+  Enter the total budget allocation in INR
+</Text>
+
+// ✅ Table accessibility
+<DataTable
+  data={data}
+  columns={columns}
+  aria-label="Open to Buy management table"
+  caption="List of all OTB records with budget information"
+/>
+```
+
+## Anti-Patterns to Avoid
+
+```typescript
+// ❌ NEVER use nitrozen-react
+import { Button } from '@gofynd/nitrozen-react';
+
+// ❌ Don't use TanStack Table directly
+import { useReactTable } from '@tanstack/react-table';
+
+// ❌ Don't create custom table components
+const CustomTable = () => { /* ... */ };
+
+// ❌ Don't bypass GENDS DataTable
+<table>
+  <thead>...</thead>
+  <tbody>...</tbody>
+</table>
+
+// ✅ ALWAYS use GENDS DataTable
+<DataTable data={data} columns={columns} />
+```

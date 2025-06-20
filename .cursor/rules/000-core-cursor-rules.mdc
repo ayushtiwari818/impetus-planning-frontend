@@ -1,0 +1,288 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Core Cursor AI Rules - Impetus Procurement Platform
+
+## Project Context
+You are working on the **Impetus procurement micro-frontend**, a sophisticated module within the larger Impetus ecosystem. This is a production-scale React application with the following tech stack:
+
+- **Product**: Impetus (procurement platform)
+- **Architecture**: Module Federation micro-frontend using `@originjs/vite-plugin-federation`
+- **Frontend Framework**: React 18.2.0 with Typescript
+- **Build System**: Vite (fast development and optimized builds)
+- **Component Library**: GENDS design system (Our PRIMARY UI LIBRARY - NEVER use `@gofynd/nitrozen-react`)
+- **State Management**: Redux Toolkit with React Query (TanStack Query) for server state
+- **Styling**: GENDS components first, styled-components as fallback or if tailwind installed then use tailwind css
+- **Module Structure**: Domain-driven with PR (Purchase Request), PO (Purchase Order), OTB (Open to Buy), DP (Distribution Plans), CR (Commercial Reports)
+
+## Critical Development Rules
+
+### 1. Component Library Priority (CRITICAL)
+**NEVER USE `@gofynd/nitrozen-react`** - This is deprecated and forbidden.
+
+**ALWAYS USE GENDS DESIGN SYSTEM FIRST:**
+```tsx
+// ✅ CORRECT - Use GENDS components
+import { Button, Input, Table } from 'gends';
+
+// ❌ WRONG - Never use nitrozen-react
+import { Button } from '@gofynd/nitrozen-react'; // FORBIDDEN
+```
+
+**Fallback hierarchy:**
+1. GENDS components (preferred)
+2. styled-components for custom styling
+3. CSS modules if absolutely necessary
+4. Inline styles only for dynamic values
+
+### 2. TypeScript Standards
+- Use strict TypeScript configuration
+- Prefer `interface` over `type` for object shapes
+- Use `type` for unions, primitives, and computed types
+- Always provide proper types for props, API responses, and state
+
+```tsx
+// ✅ CORRECT
+interface UserProps {
+  id: string;
+  name: string;
+  role: UserRole;
+}
+
+type UserRole = 'admin' | 'buyer' | 'manager';
+type ApiResponse<T> = {
+  data: T;
+  success: boolean;
+  message?: string;
+};
+```
+
+### 3. Component Architecture
+- **ONLY functional components** - No class components
+- Use React.memo() for performance optimization when needed
+- Prefer composition over inheritance
+- Keep components focused and single-responsibility
+
+```tsx
+// ✅ CORRECT - Functional component with proper typing
+import React, { memo } from 'react';
+import { Button } from 'gends';
+
+interface PurchaseRequestCardProps {
+  request: PurchaseRequest;
+  onApprove: (id: string) => void;
+  onReject: (id: string) => void;
+}
+
+export const PurchaseRequestCard = memo<PurchaseRequestCardProps>(({
+  request,
+  onApprove,
+  onReject
+}) => {
+  return (
+    <div className="purchase-request-card">
+      <h3>{request.title}</h3>
+      <Button onClick={() => onApprove(request.id)}>Approve</Button>
+      <Button variant="secondary" onClick={() => onReject(request.id)}>Reject</Button>
+    </div>
+  );
+});
+```
+
+### 4. State Management Patterns
+- **Server State**: React Query (TanStack Query) for all API data
+- **Client State**: Redux Toolkit for global application state
+- **Local State**: useState for component-specific state
+- **Form State**: React Hook Form with proper validation
+
+```tsx
+// ✅ CORRECT - React Query for server state
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+
+export const usePurchaseRequests = () => {
+  return useQuery({
+    queryKey: ['purchase-requests'],
+    queryFn: fetchPurchaseRequests,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+};
+
+export const useCreatePurchaseRequest = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: createPurchaseRequest,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-requests'] });
+    },
+  });
+};
+```
+
+### 5. File Structure & Naming
+```
+/src/pages/
+├── pr/                           # Purchase Request module
+│   ├── components/
+│   │   ├── PurchaseRequestCard/
+│   │   │   ├── index.ts
+│   │   │   ├── PurchaseRequestCard.tsx
+│   │   │   └── PurchaseRequestCard.test.tsx
+│   ├── hooks/
+│   │   ├── usePurchaseRequests.ts
+│   │   └── usePurchaseRequestActions.ts
+│   ├── services/
+│   │   └── purchaseRequestService.ts
+│   ├── types/
+│   │   └── purchaseRequest.types.ts
+│   └── pages/
+│       ├── PurchaseRequestList.tsx
+│       └── PurchaseRequestDetail.tsx
+├── po/                           # Purchase Order module
+├── otb/                          # Open to Buy module
+├── dp/                           # Distribution Plans module
+└── cr/                           # Commercial Reports module
+```
+
+### 6. Import Patterns & Path Aliases
+Use configured path aliases for cleaner imports:
+
+```tsx
+// ✅ CORRECT - Use path aliases
+import { API_ENDPOINTS } from '@src/constants/api';
+import { formatCurrency } from '@src/utils/formatting';
+import { PurchaseRequest } from '@src/types/procurement';
+import { useNotification } from 'common/hooks/useNotification';
+import { AuthService } from 'wcommon/services/auth';
+
+// ❌ WRONG - Relative paths
+import { API_ENDPOINTS } from '../../../constants/api';
+```
+
+### 7. Error Handling Standards
+- Use GENDS notification system for user feedback
+- Implement proper error boundaries
+- Log errors appropriately for debugging
+
+```tsx
+// ✅ CORRECT - Error handling with GENDS
+import { notify } from 'gends';
+
+const handleError = (error: ApiError) => {
+  console.error('Purchase request failed:', error);
+  notify({
+    variant: 'error',
+    title: error.message || 'An unexpected error occurred',
+    duration: 5000,
+  });
+};
+```
+
+### 8. Performance Optimization
+- Use React.lazy() for route-level code splitting
+- Implement proper memoization with React.memo, useMemo and useCallback
+- Optimize bundle sizes with dynamic imports
+- Use React Query's built-in caching and background updates
+
+```tsx
+// ✅ CORRECT - Lazy loading
+const PurchaseRequestDetail = lazy(() => import('./pages/PurchaseRequestDetail'));
+
+// ✅ CORRECT - Memoization for expensive calculations
+const expensiveCalculation = useMemo(() => {
+  return calculateTotalCost(items);
+}, [items]);
+```
+
+### 10. API Integration Patterns
+```tsx
+// ✅ CORRECT - Proper API service structure
+export class PurchaseRequestService {
+  static async getAll(filters?: PurchaseRequestFilters): Promise<PurchaseRequest[]> {
+    const response = await apiClient.get('/api/v1/purchase-requests', {
+      params: filters,
+    });
+    return response.data;
+  }
+
+  static async create(data: CreatePurchaseRequestRequest): Promise<PurchaseRequest> {
+    const response = await apiClient.post('/api/v1/purchase-requests', data);
+    return response.data;
+  }
+}
+```
+
+### 11. Security Considerations
+- Always validate and sanitize user inputs
+- Use proper authentication checks
+- Implement role-based access control
+- Handle sensitive procurement data appropriately
+- Never expose internal API keys or tokens
+
+### 12. Accessibility Requirements
+- Use semantic HTML elements
+- Implement proper ARIA labels
+- Ensure keyboard navigation works
+- Maintain sufficient color contrast
+- Test with screen readers
+
+## Common Patterns to Follow
+
+### Custom Hooks Pattern
+```tsx
+export const usePurchaseRequestActions = () => {
+  const createMutation = useCreatePurchaseRequest();
+  const updateMutation = useUpdatePurchaseRequest();
+  
+  const handleCreate = useCallback((data: CreatePurchaseRequestRequest) => {
+    return createMutation.mutateAsync(data);
+  }, [createMutation]);
+
+  return {
+    create: handleCreate,
+    isCreating: createMutation.isPending,
+    // ... other actions
+  };
+};
+```
+
+### Form Handling Pattern
+```tsx
+import { useForm, Controller } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Input, Button } from 'gends';
+
+const CreatePurchaseRequestForm = () => {
+  const { control, handleSubmit, formState: { errors } } = useForm({
+    resolver: zodResolver(purchaseRequestSchema),
+  });
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)}>
+      <Controller
+        name="title"
+        control={control}
+        render={({ field }) => (
+          <Input
+            {...field}
+            label="Request Title"
+            error={errors.title?.message}
+          />
+        )}
+      />
+    </form>
+  );
+};
+```
+
+## Final Reminders
+1. **GENDS FIRST** - Always check GENDS components before building custom ones
+2. **TypeScript STRICT** - No `any` types, proper interfaces everywhere
+3. **Performance MATTERS** - Use React Query caching, lazy loading, and memoization
+4. **Test COVERAGE** - Write tests for all business logic and critical user flows
+5. **Error HANDLING** - Graceful error handling with user-friendly messages
+6. **Accessibility COMPLIANCE** - Follow WCAG guidelines for inclusive design
+
+This is a production procurement system handling critical business processes. Code quality, performance, and reliability are paramount.
